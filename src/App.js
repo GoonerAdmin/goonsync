@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Users, Clock, TrendingUp, History, LogOut, Plus, Link2, Play, Square, Trophy, Crown } from 'lucide-react';
+import { Users, Clock, TrendingUp, History, LogOut, Plus, Link2, Play, Square, Trophy, Crown, Menu, X, Mail, ArrowRight } from 'lucide-react';
 
 const supabase = createClient(
   process.env.REACT_APP_SUPABASE_URL,
@@ -12,6 +12,7 @@ const App = () => {
   const [profile, setProfile] = useState(null);
   const [view, setView] = useState('landing');
   const [loading, setLoading] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
@@ -25,6 +26,7 @@ const App = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [newCircleName, setNewCircleName] = useState('');
   const [joinCode, setJoinCode] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -32,6 +34,8 @@ const App = () => {
       if (session?.user) {
         loadProfile(session.user.id);
         setView('dashboard');
+      } else {
+        setView('landing');
       }
       setLoading(false);
     });
@@ -113,11 +117,11 @@ const App = () => {
     if (isLogin) {
       const { error } = await supabase.auth.signInWithPassword({ email: username.includes('@') ? username : `${username}@goonsync.com`, password });
       if (error) alert('Login failed: ' + error.message);
-      else setView('dashboard');
+      else { setShowLoginModal(false); setView('dashboard'); }
     } else {
-      const { error } = await supabase.auth.signUp({ email: `${username}@goonsync.app`, password, options: { data: { username } } });
+      const { error } = await supabase.auth.signUp({ email: username.includes('@') ? username : `${username}@goonsync.com`, password, options: { data: { username: username.split('@')[0] } } });
       if (error) alert('Signup failed: ' + error.message);
-      else { alert('Account created! Logging you in...'); setView('dashboard'); }
+      else { alert('Account created!'); setShowLoginModal(false); setView('dashboard'); }
     }
     setLoading(false);
   };
@@ -138,7 +142,7 @@ const App = () => {
       await supabase.from('active_syncs').insert([{ user_id: user.id, username: profile.username, circle_id: circle.id }]);
     }
     if ('Notification' in window && Notification.permission === 'default') await Notification.requestPermission();
-    if ('Notification' in window && Notification.permission === 'granted') new Notification('GoonSync', { body: `${profile.username} is syncing now!`, icon: '🔄' });
+    if ('Notification' in window && Notification.permission === 'granted') new Notification('GoonSync', { body: `${profile.username} is syncing now!` });
   };
 
   const stopSync = async () => {
@@ -155,19 +159,19 @@ const App = () => {
     const { data: circleData } = await supabase.from('circles').insert([{ name: newCircleName, invite_code: inviteCode, created_by: user.id }]).select().single();
     if (circleData) {
       await supabase.from('circle_members').insert([{ circle_id: circleData.id, user_id: user.id, username: profile.username }]);
-      setNewCircleName(''); loadCircles(); alert(`Circle created! Invite code: ${inviteCode}`);
+      setNewCircleName(''); loadCircles(); alert(`Circle created! Code: ${inviteCode}`);
     }
   };
 
   const joinCircle = async () => {
     if (!joinCode.trim()) return;
     const { data: circleData } = await supabase.from('circles').select('*').eq('invite_code', joinCode.toUpperCase()).single();
-    if (!circleData) { alert('Invalid invite code!'); return; }
+    if (!circleData) { alert('Invalid code!'); return; }
     const { data: members } = await supabase.from('circle_members').select('*').eq('circle_id', circleData.id);
-    if (members && members.length >= 6) { alert('Circle is full (6 max)'); return; }
+    if (members && members.length >= 6) { alert('Circle full'); return; }
     const { data: existing } = await supabase.from('circle_members').select('*').eq('circle_id', circleData.id).eq('user_id', user.id).single();
-    if (existing) { alert('Already in this circle!'); return; }
-    if (circles.length >= 3) { alert('Free users: 3 circles max!'); return; }
+    if (existing) { alert('Already in circle!'); return; }
+    if (circles.length >= 3) { alert('3 circles max!'); return; }
     await supabase.from('circle_members').insert([{ circle_id: circleData.id, user_id: user.id, username: profile.username }]);
     setJoinCode(''); loadCircles(); alert('Joined!');
   };
@@ -183,83 +187,222 @@ const App = () => {
 
   const analytics = user ? getAnalytics() : null;
 
-  if (loading) return <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center"><div className="text-white text-2xl">Loading...</div></div>;const Header = () => (
-    <div className="bg-white/10 backdrop-blur-lg border-b border-white/20">
-      <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="text-3xl">🔄</div>
-          <h1 className="text-2xl font-bold text-white">GoonSync</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-purple-200">@{profile?.username}</span>
-          <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-lg transition">
-            <LogOut className="text-white" size={20} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><div className="text-white text-xl">Loading...</div></div>;
 
-  const Navigation = () => (
-    <div className="max-w-6xl mx-auto px-4 py-4">
-      <div className="flex gap-2 bg-white/10 backdrop-blur-lg rounded-xl p-2 border border-white/20">
-        {['dashboard', 'circles', 'leaderboard', 'analytics', 'history'].map(v => (
-          <button key={v} onClick={() => setView(v)} className={`flex-1 py-2 px-4 rounded-lg font-semibold transition ${view === v ? 'bg-purple-600 text-white' : 'hover:bg-white/10 text-white'}`}>
-            {v.charAt(0).toUpperCase() + v.slice(1)}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
+  // Landing Page
   if (view === 'landing') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900 flex items-center justify-center p-4">
-        <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 max-w-md w-full border border-white/20 shadow-2xl">
-          <div className="text-center mb-8">
-            <div className="text-6xl mb-4">🔄</div>
-            <h1 className="text-4xl font-bold text-white mb-2">GoonSync</h1>
-            <p className="text-purple-200">Sync with your circle, anytime</p>
+      <div className="min-h-screen bg-black text-white">
+        <nav className="fixed w-full bg-black/90 backdrop-blur-sm border-b border-gray-800 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-2">
+                <div className="text-2xl font-bold">GoonSync</div>
+              </div>
+              <div className="hidden md:flex items-center space-x-8">
+                <a href="#features" className="hover:text-gray-300 transition">Features</a>
+                <a href="#contact" className="hover:text-gray-300 transition">Contact</a>
+                <button onClick={() => setShowLoginModal(true)} className="px-6 py-2 bg-white text-black rounded-full font-semibold hover:bg-gray-200 transition">
+                  Get Started
+                </button>
+              </div>
+              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden">
+                {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              </button>
+            </div>
           </div>
-          <div className="space-y-4">
-            <input type="text" placeholder="Username" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleAuth()} className="w-full px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400" />
-            <button onClick={handleAuth} disabled={loading} className="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold transition disabled:opacity-50">{isLogin ? 'Log In' : 'Sign Up'}</button>
-            <button onClick={() => setIsLogin(!isLogin)} className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-xl font-semibold transition border border-white/30">{isLogin ? 'Need an account? Sign Up' : 'Have an account? Log In'}</button>
+        </nav>
+
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 bg-black z-40 pt-20 px-4">
+            <div className="flex flex-col space-y-4">
+              <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-xl py-2">Features</a>
+              <a href="#contact" onClick={() => setMobileMenuOpen(false)} className="text-xl py-2">Contact</a>
+              <button onClick={() => { setShowLoginModal(true); setMobileMenuOpen(false); }} className="px-6 py-3 bg-white text-black rounded-full font-semibold">
+                Get Started
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="pt-32 pb-20 px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <h1 className="text-6xl md:text-8xl font-bold mb-6">Sync with the squad.</h1>
+            <p className="text-xl md:text-2xl text-gray-400 mb-12">Real-time coordination for your crew. Stay connected, stay synchronized.</p>
+            <button onClick={() => setShowLoginModal(true)} className="px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:bg-gray-200 transition transform hover:scale-105 inline-flex items-center">
+              Try Web Version <ArrowRight className="ml-2" size={20} />
+            </button>
           </div>
         </div>
+
+        <div className="py-12 px-4 border-y border-gray-800">
+          <div className="max-w-4xl mx-auto text-center">
+            <p className="text-gray-400 mb-6">Coming Soon</p>
+            <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-6">
+              <div className="bg-gray-900 px-8 py-3 rounded-lg border border-gray-800">
+                <p className="text-sm text-gray-500">Available on</p>
+                <p className="font-bold">App Store</p>
+              </div>
+              <div className="bg-gray-900 px-8 py-3 rounded-lg border border-gray-800">
+                <p className="text-sm text-gray-500">Available on</p>
+                <p className="font-bold">Play Store</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="features" className="py-20 px-4">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="text-4xl font-bold text-center mb-16">Everything you need</h2>
+            <div className="grid md:grid-cols-3 gap-8">
+              <div className="p-6 border border-gray-800 rounded-xl hover:border-gray-700 transition">
+                <Users className="mb-4" size={32} />
+                <h3 className="text-xl font-bold mb-2">Circles</h3>
+                <p className="text-gray-400">Create private groups and sync with your squad in real-time.</p>
+              </div>
+              <div className="p-6 border border-gray-800 rounded-xl hover:border-gray-700 transition">
+                <Trophy className="mb-4" size={32} />
+                <h3 className="text-xl font-bold mb-2">Leaderboards</h3>
+                <p className="text-gray-400">Compete with friends and track your stats over time.</p>
+              </div>
+              <div className="p-6 border border-gray-800 rounded-xl hover:border-gray-700 transition">
+                <TrendingUp className="mb-4" size={32} />
+                <h3 className="text-xl font-bold mb-2">Analytics</h3>
+                <p className="text-gray-400">Deep insights into your activity and performance.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="contact" className="py-20 px-4 border-t border-gray-800">
+          <div className="max-w-2xl mx-auto text-center">
+            <h2 className="text-3xl font-bold mb-6">Get in touch</h2>
+            <p className="text-gray-400 mb-8">Have questions? Want to collaborate? Reach out to us.</p>
+            <a href="mailto:admin@goonsync.com" className="inline-flex items-center text-lg hover:text-gray-300 transition">
+              <Mail className="mr-2" size={20} />
+              admin@goonsync.com
+            </a>
+          </div>
+        </div>
+
+        <footer className="py-8 px-4 border-t border-gray-800">
+          <div className="max-w-7xl mx-auto text-center text-gray-500 text-sm">
+            © 2024 GoonSync. All rights reserved.
+          </div>
+        </footer>
+
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full border border-gray-800">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">{isLogin ? 'Welcome back' : 'Create account'}</h2>
+                <button onClick={() => setShowLoginModal(false)} className="hover:text-gray-400 transition">
+                  <X size={24} />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <input
+                  type="text"
+                  placeholder="Email or username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full px-4 py-3 bg-black border border-gray-800 rounded-lg focus:outline-none focus:border-gray-600 transition"
+                />
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAuth()}
+                  className="w-full px-4 py-3 bg-black border border-gray-800 rounded-lg focus:outline-none focus:border-gray-600 transition"
+                />
+                <button
+                  onClick={handleAuth}
+                  disabled={loading}
+                  className="w-full py-3 bg-white text-black rounded-lg font-bold hover:bg-gray-200 transition disabled:opacity-50"
+                >
+                  {isLogin ? 'Log in' : 'Sign up'}
+                </button>
+                <button
+                  onClick={() => setIsLogin(!isLogin)}
+                  className="w-full text-gray-400 hover:text-white transition text-sm"
+                >
+                  {isLogin ? 'Need an account? Sign up' : 'Have an account? Log in'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
+  const AppNav = () => (
+    <nav className="fixed w-full bg-black/90 backdrop-blur-sm border-b border-gray-800 z-50">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex justify-between items-center h-16">
+          <div className="text-xl font-bold">GoonSync</div>
+          <div className="hidden md:flex space-x-1">
+            {['dashboard', 'circles', 'leaderboard', 'analytics', 'history'].map(v => (
+              <button key={v} onClick={() => setView(v)} className={`px-4 py-2 rounded-lg transition ${view === v ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-white'}`}>
+                {v.charAt(0).toUpperCase() + v.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center space-x-4">
+            <span className="text-gray-400 text-sm">@{profile?.username}</span>
+            <button onClick={handleLogout} className="hover:text-gray-400 transition">
+              <LogOut size={20} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+
   if (view === 'dashboard') {
     const otherActiveUsers = activeUsers.filter(u => u.user_id !== user.id);
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <Header /><Navigation />
-        <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="min-h-screen bg-black text-white">
+        <AppNav />
+        <div className="max-w-5xl mx-auto px-4 pt-24 pb-12">
           {otherActiveUsers.length > 0 && !isSyncing && (
-            <div className="bg-green-500/20 border border-green-400/40 rounded-xl p-4 mb-6 backdrop-blur-lg">
-              <p className="text-green-100 text-center font-semibold">🔥 {otherActiveUsers.map(u => u.username).join(', ')} {otherActiveUsers.length === 1 ? 'is' : 'are'} syncing now! Join them!</p>
+            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 mb-6">
+              <p className="text-green-400 text-center">🔥 {otherActiveUsers.map(u => u.username).join(', ')} {otherActiveUsers.length === 1 ? 'is' : 'are'} syncing now!</p>
             </div>
           )}
-          <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-12 border border-white/20 text-center">
+          <div className="border border-gray-800 rounded-2xl p-12 text-center mb-6">
             {!isSyncing ? (
               <>
-                <div className="mb-8"><div className="text-8xl mb-4">⚡</div><h2 className="text-4xl font-bold text-white mb-2">Ready to Sync?</h2><p className="text-purple-200">{circles.length === 0 ? 'Join a circle first!' : 'Hit the button to notify your circles'}</p></div>
-                <button onClick={startSync} disabled={circles.length === 0} className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-16 py-6 rounded-2xl text-2xl font-bold shadow-2xl transform hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"><Play className="inline mr-2" size={32} />SYNC NOW</button>
+                <h2 className="text-4xl font-bold mb-4">Ready to sync?</h2>
+                <p className="text-gray-400 mb-8">{circles.length === 0 ? 'Join a circle to get started' : 'Start your session'}</p>
+                <button onClick={startSync} disabled={circles.length === 0} className="px-12 py-4 bg-white text-black rounded-full font-bold text-lg hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center">
+                  <Play className="mr-2" size={24} /> Sync Now
+                </button>
               </>
             ) : (
               <>
-                <div className="mb-8"><div className="text-8xl mb-4 animate-pulse">🔄</div><h2 className="text-4xl font-bold text-white mb-2">Syncing...</h2><p className="text-6xl font-mono text-purple-200 my-6">{formatTime(elapsedTime)}</p></div>
-                <button onClick={stopSync} className="bg-red-600 hover:bg-red-700 text-white px-16 py-6 rounded-2xl text-2xl font-bold shadow-2xl transform hover:scale-105 transition"><Square className="inline mr-2" size={32} />FINISH</button>
+                <div className="text-6xl font-mono mb-4">{formatTime(elapsedTime)}</div>
+                <p className="text-gray-400 mb-8">Session in progress</p>
+                <button onClick={stopSync} className="px-12 py-4 bg-red-600 text-white rounded-full font-bold text-lg hover:bg-red-700 transition inline-flex items-center">
+                  <Square className="mr-2" size={24} /> Finish
+                </button>
               </>
             )}
           </div>
-          <div className="grid grid-cols-3 gap-4 mt-6">
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 text-center"><div className="text-3xl font-bold text-white">{analytics.totalSessions}</div><div className="text-purple-200 text-sm">Total Sessions</div></div>
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 text-center"><div className="text-3xl font-bold text-white">{formatTime(Math.floor(analytics.avgDuration))}</div><div className="text-purple-200 text-sm">Avg Duration</div></div>
-            <div className="bg-white/10 backdrop-blur-lg rounded-xl p-6 border border-white/20 text-center"><div className="text-3xl font-bold text-white">{activeUsers.length}</div><div className="text-purple-200 text-sm">Active Now</div></div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="border border-gray-800 rounded-xl p-6 text-center">
+              <div className="text-3xl font-bold mb-1">{analytics.totalSessions}</div>
+              <div className="text-gray-400 text-sm">Sessions</div>
+            </div>
+            <div className="border border-gray-800 rounded-xl p-6 text-center">
+              <div className="text-3xl font-bold mb-1">{formatTime(Math.floor(analytics.avgDuration))}</div>
+              <div className="text-gray-400 text-sm">Avg Duration</div>
+            </div>
+            <div className="border border-gray-800 rounded-xl p-6 text-center">
+              <div className="text-3xl font-bold mb-1">{activeUsers.length}</div>
+              <div className="text-gray-400 text-sm">Active Now</div>
+            </div>
           </div>
         </div>
       </div>
@@ -268,167 +411,103 @@ const App = () => {
 
   if (view === 'circles') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <Header /><Navigation />
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
-            <h2 className="text-3xl font-bold text-white mb-6">Your Circles ({circles.length}/3)</h2>
-            {circles.length === 0 ? (
-              <div className="text-center py-8 text-purple-200"><Users size={48} className="mx-auto mb-4 opacity-50" /><p>You're not in any circles yet. Create or join one!</p></div>
-            ) : (
-              <div className="grid gap-4 mb-8">
-                {circles.map(circle => (
-                  <div key={circle.id} className="bg-white/5 rounded-xl p-6 border border-white/10">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-xl font-bold text-white">{circle.name}</h3>
-                        {circle.created_by === user.id && <Crown size={20} className="text-yellow-400" />}
-                      </div>
+      <div className="min-h-screen bg-black text-white">
+        <AppNav />
+        <div className="max-w-4xl mx-auto px-4 pt-24 pb-12">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold mb-2">Your Circles</h1>
+            <p className="text-gray-400">{circles.length}/3 circles</p>
+          </div>
+          {circles.length === 0 ? (
+            <div className="border border-gray-800 rounded-xl p-12 text-center">
+              <Users size={48} className="mx-auto mb-4 text-gray-600" />
+              <p className="text-gray-400 mb-8">No circles yet. Create or join one to get started.</p>
+            </div>
+          ) : (
+            <div className="space-y-4 mb-8">
+              {circles.map(circle => (
+                <div key={circle.id} className="border border-gray-800 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-xl font-bold">{circle.name}</h3>
+                      {circle.created_by === user.id && <Crown size={18} className="text-yellow-500" />}
                     </div>
-                    <p className="text-purple-200 text-sm mb-4">Invite Code: {circle.invite_code}</p>
-                    <button onClick={() => { navigator.clipboard.writeText(circle.invite_code); alert('Copied!'); }} className="text-purple-400 hover:text-purple-300 text-sm flex items-center gap-1"><Link2 size={16} />Copy Invite Code</button>
                   </div>
-                ))}
-              </div>
-            )}
-            <div className="space-y-4">
-              <div>
-                <input type="text" placeholder="Circle name" value={newCircleName} onChange={(e) => setNewCircleName(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 mb-2" />
-                <button onClick={createCircle} disabled={circles.length >= 3} className="w-full py-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed"><Plus size={20} />Create New Circle</button>
-                {circles.length >= 3 && <p className="text-yellow-300 text-sm mt-2 text-center">Free users: 3 circles max</p>}
-              </div>
-              <div>
-                <input type="text" placeholder="Enter invite code" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} className="w-full px-4 py-3 rounded-xl bg-white/20 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-purple-400 mb-2" />
-                <button onClick={joinCircle} disabled={circles.length >= 3} className="w-full py-4 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold border border-white/20 transition disabled:opacity-50 disabled:cursor-not-allowed">Join Circle</button>
-              </div>
+                  <p className="text-gray-400 text-sm mb-2">Code: {circle.invite_code}</p>
+                  <button onClick={() => { navigator.clipboard.writeText(circle.invite_code); alert('Copied!'); }} className="text-sm text-gray-400 hover:text-white transition inline-flex items-center">
+                    <Link2 size={14} className="mr-1" /> Copy code
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="space-y-4">
+            <div>
+              <input type="text" placeholder="Circle name" value={newCircleName} onChange={(e) => setNewCircleName(e.target.value)} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-gray-600 mb-2" />
+              <button onClick={createCircle} disabled={circles.length >= 3} className="w-full py-3 bg-white text-black rounded-lg font-semibold hover:bg-gray-200 transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center">
+                <Plus size={20} className="mr-2" /> Create Circle
+              </button>
+              {circles.length >= 3 && <p className="text-yellow-500 text-sm mt-2">Free tier: 3 circles max</p>}
+            </div>
+            <div>
+              <input type="text" placeholder="Enter invite code" value={joinCode} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} className="w-full px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg focus:outline-none focus:border-gray-600 mb-2" />
+              <button onClick={joinCircle} disabled={circles.length >= 3} className="w-full py-3 border border-gray-800 rounded-lg font-semibold hover:bg-gray-900 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                Join Circle
+              </button>
             </div>
           </div>
         </div>
       </div>
     );
-  }if (view === 'leaderboard') {
+  }
+
+  if (view === 'leaderboard') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <Header /><Navigation />
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
-            <h2 className="text-3xl font-bold text-white mb-6">Circle Leaderboards</h2>
-            {circles.length === 0 ? (
-              <div className="text-center py-12"><Trophy className="text-purple-300 mx-auto mb-4" size={48} /><p className="text-purple-200">Join a circle to see leaderboards!</p></div>
-            ) : (
-              <div className="space-y-6">
-                {circles.map(circle => (
-                  <div key={circle.id} className="bg-white/5 rounded-xl p-6 border border-white/10">
-                    <h3 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Trophy className="text-yellow-400" size={24} />{circle.name}</h3>
-                    <button onClick={() => loadLeaderboard(circle.id)} className="mb-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition">Load Leaderboard</button>
-                    {leaderboard.length === 0 ? (
-                      <p className="text-purple-200 text-center py-4">No sessions yet</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {leaderboard.map((u, i) => (
-                          <div key={i} className={`flex items-center justify-between p-4 rounded-lg ${u.username === profile?.username ? 'bg-purple-600/30 border border-purple-400/50' : 'bg-white/5'}`}>
-                            <div className="flex items-center gap-4">
-                              <div className="text-2xl">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</div>
-                              <div><p className="text-white font-semibold">{u.username}</p><p className="text-purple-200 text-sm">{u.totalSessions} sessions</p></div>
+      <div className="min-h-screen bg-black text-white">
+        <AppNav />
+        <div className="max-w-4xl mx-auto px-4 pt-24 pb-12">
+          <h1 className="text-3xl font-bold mb-8">Leaderboards</h1>
+          {circles.length === 0 ? (
+            <div className="border border-gray-800 rounded-xl p-12 text-center">
+              <Trophy size={48} className="mx-auto mb-4 text-gray-600" />
+              <p className="text-gray-400">Join a circle to see leaderboards</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {circles.map(circle => (
+                <div key={circle.id} className="border border-gray-800 rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-bold">{circle.name}</h3>
+                    <button onClick={() => loadLeaderboard(circle.id)} className="px-4 py-2 bg-gray-900 rounded-lg text-sm hover:bg-gray-800 transition">
+                      Load
+                    </button>
+                  </div>
+                  {leaderboard.length === 0 ? (
+                    <p className="text-gray-400 text-sm">No sessions yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {leaderboard.map((u, i) => (
+                        <div key={i} className={`flex items-center justify-between p-3 rounded-lg ${u.username === profile?.username ? 'bg-gray-900 border border-gray-800' : 'bg-gray-950'}`}>
+                          <div className="flex items-center space-x-3">
+                            <div className="text-xl w-8">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}`}</div>
+                            <div>
+                              <p className="font-semibold">{u.username}</p>
+                              <p className="text-gray-400 text-sm">{u.totalSessions} sessions</p>
                             </div>
-                            <div className="text-right"><p className="text-white font-bold">{formatTime(u.totalTime)}</p><p className="text-purple-200 text-sm">Total time</p></div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'analytics') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <Header /><Navigation />
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
-            <h2 className="text-3xl font-bold text-white mb-8">Your Analytics</h2>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="bg-gradient-to-br from-purple-600/30 to-pink-600/30 rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-4"><Clock className="text-white" size={24} /><h3 className="text-xl font-bold text-white">Total Goon Time</h3></div>
-                <p className="text-5xl font-bold text-white mb-2">{formatTime(analytics.totalTime)}</p>
-                <p className="text-purple-200">Across all sessions</p>
-              </div>
-              <div className="bg-gradient-to-br from-blue-600/30 to-purple-600/30 rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-4"><TrendingUp className="text-white" size={24} /><h3 className="text-xl font-bold text-white">Average Duration</h3></div>
-                <p className="text-5xl font-bold text-white mb-2">{formatTime(Math.floor(analytics.avgDuration))}</p>
-                <p className="text-purple-200">Per session</p>
-              </div>
-              <div className="bg-gradient-to-br from-green-600/30 to-blue-600/30 rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-4"><Users className="text-white" size={24} /><h3 className="text-xl font-bold text-white">Total Sessions</h3></div>
-                <p className="text-5xl font-bold text-white mb-2">{analytics.totalSessions}</p>
-                <p className="text-purple-200">Completed</p>
-              </div>
-              <div className="bg-gradient-to-br from-pink-600/30 to-red-600/30 rounded-xl p-6 border border-white/20">
-                <div className="flex items-center gap-3 mb-4"><Trophy className="text-white" size={24} /><h3 className="text-xl font-bold text-white">Longest Session</h3></div>
-                <p className="text-5xl font-bold text-white mb-2">{formatTime(analytics.longestSession)}</p>
-                <p className="text-purple-200">Personal record</p>
-              </div>
-            </div>
-            <div className="mt-8 bg-white/5 rounded-xl p-6 border border-white/10">
-              <h3 className="text-xl font-bold text-white mb-4">Activity Insights</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between items-center"><span className="text-purple-200">Sessions This Week</span><span className="text-white font-bold">{analytics.totalSessions}</span></div>
-                <div className="flex justify-between items-center"><span className="text-purple-200">Average Session Length</span><span className="text-white font-bold">{formatTime(Math.floor(analytics.avgDuration))}</span></div>
-                <div className="flex justify-between items-center"><span className="text-purple-200">Circles Joined</span><span className="text-white font-bold">{circles.length}/3</span></div>
-                <div className="flex justify-between items-center"><span className="text-purple-200">Currently Active</span><span className="text-white font-bold">{activeUsers.length} users</span></div>
-              </div>
-            </div>
-            <div className="mt-6 bg-gradient-to-r from-yellow-600/20 to-orange-600/20 border border-yellow-400/30 rounded-xl p-6">
-              <div className="flex items-start gap-3">
-                <Crown className="text-yellow-400 flex-shrink-0" size={24} />
-                <div><h3 className="text-xl font-bold text-white mb-2">Upgrade to Premium</h3><p className="text-purple-200 mb-4">Unlock unlimited circles, advanced analytics, and more!</p><button className="px-6 py-2 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-lg font-semibold transition">Upgrade Now</button></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === 'history') {
-    const completedSessions = sessions.filter(s => s.duration_seconds);
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-purple-800 to-indigo-900">
-        <Header /><Navigation />
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-8 border border-white/20">
-            <h2 className="text-3xl font-bold text-white mb-6">Session History</h2>
-            {completedSessions.length === 0 ? (
-              <div className="text-center py-12"><History className="text-purple-300 mx-auto mb-4" size={48} /><p className="text-purple-200">No sessions yet. Start your first sync!</p></div>
-            ) : (
-              <div className="space-y-3">
-                {completedSessions.map((session, index) => (
-                  <div key={session.id} className="bg-white/5 rounded-xl p-4 border border-white/10 flex items-center justify-between">
-                    <div>
-                      <p className="text-white font-semibold">{formatTime(session.duration_seconds)}</p>
-                      <p className="text-purple-200 text-sm">{new Date(session.created_at).toLocaleString()}</p>
+                          <div className="text-right">
+                            <p className="font-bold">{formatTime(u.totalTime)}</p>
+                            <p className="text-gray-400 text-xs">Total</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="text-right">
-                      <p className="text-purple-300 text-sm">Session #{completedSessions.length - index}</p>
-                      <p className="text-purple-200 text-xs">{new Date(session.start_time).toLocaleTimeString()} - {new Date(session.end_time).toLocaleTimeString()}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
   }
-
-  return null;
-};
-
-export default App;
