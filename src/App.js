@@ -4,8 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import MainLayout from './components/MainLayout';
 import Dashboard from './pages/Dashboard';
 import ProfileView from './components/ProfileView';
-import CirclesView from './components/CirclesView';
-import Settings from './components/Settings';
 import Button from './components/Button';
 import { supabase } from './supabaseClient';
 
@@ -26,6 +24,8 @@ const App = () => {
   const [sessions, setSessions] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  const [newCircleName, setNewCircleName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [authError, setAuthError] = useState('');
 
@@ -54,7 +54,7 @@ const App = () => {
 
   const loadCircles = async () => {
     if (!user) return;
-    const { data } = await supabase.from('circle_members').select('circle_id, circles(id, name, invite_code, created_by, created_at)').eq('user_id', user.id);
+    const { data } = await supabase.from('circle_members').select('circle_id, circles(id, name, invite_code, created_by)').eq('user_id', user.id);
     if (data) setCircles(data.map(d => d.circles));
   };
 
@@ -207,6 +207,63 @@ const App = () => {
     setCurrentSessionId(null);
     loadSessions(); 
     loadActiveUsers();
+  };
+
+  const createCircle = async () => {
+    if (!newCircleName.trim()) return;
+    const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+    const { data: circleData } = await supabase.from('circles').insert([{ 
+      name: newCircleName, 
+      invite_code: inviteCode, 
+      created_by: user.id 
+    }]).select().single();
+    if (circleData) {
+      await supabase.from('circle_members').insert([{ 
+        circle_id: circleData.id, 
+        user_id: user.id, 
+        username: profile.username 
+      }]);
+      setNewCircleName(''); 
+      loadCircles();
+      setAuthError(`Circle created! Invite code: ${inviteCode}`);
+      setTimeout(() => setAuthError(''), 5000);
+    }
+  };
+
+  const joinCircle = async () => {
+    if (!joinCode.trim()) return;
+    const { data: circleData } = await supabase.from('circles').select('*').eq('invite_code', joinCode.toUpperCase()).single();
+    if (!circleData) { 
+      setAuthError('Invalid invite code!');
+      setTimeout(() => setAuthError(''), 3000);
+      return; 
+    }
+    const { data: members } = await supabase.from('circle_members').select('*').eq('circle_id', circleData.id);
+    if (members && members.length >= 6) { 
+      setAuthError('Circle is full (max 6 members)');
+      setTimeout(() => setAuthError(''), 3000);
+      return; 
+    }
+    const { data: existing } = await supabase.from('circle_members').select('*').eq('circle_id', circleData.id).eq('user_id', user.id).single();
+    if (existing) { 
+      setAuthError('You\'re already in this circle!');
+      setTimeout(() => setAuthError(''), 3000);
+      return; 
+    }
+    if (circles.length >= 3) { 
+      setAuthError('Maximum 3 circles on free tier');
+      setTimeout(() => setAuthError(''), 3000);
+      return; 
+    }
+    await supabase.from('circle_members').insert([{ 
+      circle_id: circleData.id, 
+      user_id: user.id, 
+      username: profile.username 
+    }]);
+    setJoinCode(''); 
+    loadCircles();
+    setAuthError(`Joined ${circleData.name}!`);
+    setTimeout(() => setAuthError(''), 3000);
   };
 
   const getAnalytics = () => {
@@ -608,7 +665,7 @@ const App = () => {
               className="fixed top-4 right-4 z-50 max-w-md"
             >
               <div className={`p-4 rounded-xl border ${
-                authError.includes('created') || authError.includes('Joined') || authError.includes('success') || authError.includes('copied')
+                authError.includes('created') || authError.includes('Joined') 
                   ? 'bg-green-500/10 border-green-500/20 text-green-400' 
                   : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
               }`}>
@@ -640,110 +697,143 @@ const App = () => {
             sessions={sessions}
             circles={circles}
             onLogout={handleLogout}
-            supabase={supabase}
-            onProfileUpdate={() => loadProfile(user.id)}
           />
         )}
 
         {view === 'circles' && (
-          <CirclesView
-            user={user}
-            profile={profile}
-            circles={circles}
-            onCreateCircle={async (name) => {
-              try {
-                const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
-                const { data: circleData, error: circleError } = await supabase
-                  .from('circles')
-                  .insert([{ name, invite_code: inviteCode, created_by: user.id }])
-                  .select()
-                  .single();
+          <div className="min-h-screen">
+            <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10">
+              <div className="px-4 py-4">
+                <h2 className="text-xl font-bold">Circles</h2>
+                <p className="text-x-gray text-sm">
+                  {circles.length}/3 circles • Max 6 members each
+                </p>
+              </div>
+            </div>
 
-                if (circleError) throw circleError;
+            <div className="p-4 space-y-4">
+              {/* Current Circles */}
+              {circles.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-semibold text-x-gray uppercase tracking-wider px-2">Your Circles</h3>
+                  {circles.map(circle => (
+                    <motion.div
+                      key={circle.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="border border-x-border rounded-2xl p-5 hover:bg-x-hover transition-colors group"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                            <Users size={24} className="text-white" />
+                          </div>
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <h3 className="text-lg font-bold">{circle.name}</h3>
+                              {circle.created_by === user.id && (
+                                <div className="px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/20 rounded text-yellow-500 text-xs font-semibold">
+                                  Owner
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-x-gray text-sm">Created {new Date(circle.created_at).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-sm">
+                          <span className="text-x-gray">Code:</span>
+                          <code className="px-3 py-1 bg-black border border-x-border rounded-lg font-mono font-semibold">
+                            {circle.invite_code}
+                          </code>
+                        </div>
+                        <button 
+                          onClick={() => { 
+                            navigator.clipboard.writeText(circle.invite_code); 
+                            setAuthError('Invite code copied!');
+                            setTimeout(() => setAuthError(''), 2000);
+                          }} 
+                          className="flex items-center space-x-1 px-3 py-1.5 text-sm text-x-gray hover:text-x-blue border border-x-border rounded-lg hover:border-x-blue transition group"
+                        >
+                          <Link2 size={14} />
+                          <span>Copy</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
 
-                await supabase.from('circle_members').insert([{ 
-                  circle_id: circleData.id, 
-                  user_id: user.id, 
-                  username: profile.username 
-                }]);
+              {/* Empty State */}
+              {circles.length === 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="border border-x-border rounded-2xl p-12 text-center"
+                >
+                  <div className="h-20 w-20 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Users size={36} className="text-gray-600" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">No circles yet</h3>
+                  <p className="text-x-gray mb-6">Create your first circle or join one with an invite code</p>
+                </motion.div>
+              )}
 
-                loadCircles();
-                setAuthError(`Circle created! Code: ${inviteCode}`);
-                setTimeout(() => setAuthError(''), 5000);
-                return { success: true, message: `Circle created! Code: ${inviteCode}` };
-              } catch (error) {
-                return { success: false, error: error.message };
-              }
-            }}
-            onJoinCircle={async (code) => {
-              try {
-                const { data: circleData, error: findError } = await supabase
-                  .from('circles')
-                  .select('*')
-                  .eq('invite_code', code.toUpperCase())
-                  .single();
+              {/* Create Circle */}
+              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Plus size={20} className="text-x-blue" />
+                  <h3 className="font-bold text-lg">Create New Circle</h3>
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="Enter circle name..." 
+                  value={newCircleName} 
+                  onChange={(e) => setNewCircleName(e.target.value)} 
+                  className="w-full px-4 py-3 bg-black border border-x-border rounded-xl focus:outline-none focus:border-x-blue mb-3 transition placeholder:text-gray-600" 
+                />
+                <Button 
+                  onClick={createCircle} 
+                  disabled={circles.length >= 3 || !newCircleName.trim()}
+                  variant="primary"
+                  className="w-full"
+                  icon={Plus}
+                >
+                  {circles.length >= 3 ? 'Max Circles Reached' : 'Create Circle'}
+                </Button>
+                {circles.length >= 3 && (
+                  <p className="text-yellow-500 text-sm mt-3 text-center">
+                    Free tier: 3 circles maximum
+                  </p>
+                )}
+              </div>
 
-                if (findError || !circleData) {
-                  return { success: false, error: 'Invalid invite code' };
-                }
-
-                const { data: members } = await supabase
-                  .from('circle_members')
-                  .select('*')
-                  .eq('circle_id', circleData.id);
-
-                if (members && members.length >= 6) {
-                  return { success: false, error: 'Circle is full (max 6 members)' };
-                }
-
-                const { data: existing } = await supabase
-                  .from('circle_members')
-                  .select('*')
-                  .eq('circle_id', circleData.id)
-                  .eq('user_id', user.id)
-                  .single();
-
-                if (existing) {
-                  return { success: false, error: 'Already in this circle' };
-                }
-
-                if (circles.length >= 3) {
-                  return { success: false, error: 'Maximum 3 circles on free tier' };
-                }
-
-                await supabase.from('circle_members').insert([{ 
-                  circle_id: circleData.id, 
-                  user_id: user.id, 
-                  username: profile.username 
-                }]);
-
-                loadCircles();
-                setAuthError(`Joined ${circleData.name}!`);
-                setTimeout(() => setAuthError(''), 3000);
-                return { success: true, message: `Joined ${circleData.name}!` };
-              } catch (error) {
-                return { success: false, error: error.message };
-              }
-            }}
-            onLeaveCircle={async (circleId) => {
-              try {
-                await supabase
-                  .from('circle_members')
-                  .delete()
-                  .eq('circle_id', circleId)
-                  .eq('user_id', user.id);
-
-                loadCircles();
-                setAuthError('Left circle successfully');
-                setTimeout(() => setAuthError(''), 3000);
-                return { success: true, message: 'Left circle successfully' };
-              } catch (error) {
-                return { success: false, error: error.message };
-              }
-            }}
-            supabase={supabase}
-            onUpdate={loadCircles}
-          />
+              {/* Join Circle */}
+              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                <div className="flex items-center space-x-2 mb-4">
+                  <Link2 size={20} className="text-x-blue" />
+                  <h3 className="font-bold text-lg">Join Circle</h3>
+                </div>
+                <input 
+                  type="text" 
+                  placeholder="Enter invite code..." 
+                  value={joinCode} 
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())} 
+                  className="w-full px-4 py-3 bg-black border border-x-border rounded-xl focus:outline-none focus:border-x-blue mb-3 transition font-mono uppercase placeholder:text-gray-600" 
+                />
+                <Button 
+                  onClick={joinCircle} 
+                  disabled={circles.length >= 3 || !joinCode.trim()}
+                  variant="secondary"
+                  className="w-full"
+                >
+                  {circles.length >= 3 ? 'Max Circles Reached' : 'Join Circle'}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {view === 'leaderboard' && (
@@ -1007,16 +1097,6 @@ const App = () => {
               )}
             </div>
           </div>
-        )}
-
-        {view === 'settings' && (
-          <Settings
-            user={user}
-            profile={profile}
-            onLogout={handleLogout}
-            supabase={supabase}
-            onUpdate={() => loadProfile(user.id)}
-          />
         )}
       </MainLayout>
     );
