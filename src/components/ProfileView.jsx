@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { User, Clock, TrendingUp, Users, Calendar, Award, LogOut } from 'lucide-react';
+import { User, Clock, TrendingUp, Users, Calendar, Award, LogOut, Edit2, Camera, X, Check, Settings as SettingsIcon } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const Profile = ({ user, profile, sessions, circles, onLogout }) => {
+const ProfileView = ({ user, profile, sessions, circles, onLogout, supabase, onProfileUpdate }) => {
   const [activeTab, setActiveTab] = useState('overview');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newUsername, setNewUsername] = useState(profile?.username || '');
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [profileImage, setProfileImage] = useState(null);
   const [stats, setStats] = useState({
     totalSessions: 0,
     totalDuration: 0,
@@ -18,7 +23,86 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
     if (sessions && sessions.length > 0) {
       calculateStats(sessions);
     }
+    loadProfileImage();
   }, [sessions]);
+
+  const loadProfileImage = async () => {
+    if (!profile?.avatar_url) return;
+    setProfileImage(profile.avatar_url);
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be less than 2MB');
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Create unique filename
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+      const filePath = `avatars/${fileName}`;
+
+      // Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+
+      const avatarUrl = urlData.publicUrl;
+
+      // Update profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+
+      setProfileImage(avatarUrl);
+      if (onProfileUpdate) onProfileUpdate();
+      
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      alert('Failed to upload image. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleUpdateUsername = async () => {
+    if (!newUsername.trim() || newUsername === profile?.username) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ username: newUsername.trim() })
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      setIsEditingName(false);
+      if (onProfileUpdate) onProfileUpdate();
+    } catch (error) {
+      console.error('Error updating username:', error);
+      alert('Failed to update username. It may already be taken.');
+    }
+  };
 
   const calculateStats = (sessionsData) => {
     const completedSessions = sessionsData.filter(s => s.end_time && s.duration_seconds);
@@ -149,15 +233,82 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <div className="sticky top-0 bg-black/80 backdrop-blur-sm border-b border-x-border z-10">
-        <div className="px-4 py-3">
+      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10">
+        <div className="px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold">
-                {profile?.username?.[0]?.toUpperCase() || 'U'}
+              {/* Profile Image */}
+              <div className="relative group">
+                {profileImage ? (
+                  <img 
+                    src={profileImage} 
+                    alt={profile?.username}
+                    className="h-12 w-12 rounded-full object-cover border-2 border-gray-700"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                    {profile?.username?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                
+                {/* Upload Button Overlay */}
+                <label className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer">
+                  <Camera size={16} className="text-white" />
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={isUploadingImage}
+                  />
+                </label>
+                
+                {isUploadingImage && (
+                  <div className="absolute inset-0 bg-black/80 rounded-full flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                  </div>
+                )}
               </div>
+
               <div>
-                <h2 className="text-lg font-bold">{profile?.username || 'User'}</h2>
+                {/* Editable Username */}
+                {isEditingName ? (
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={newUsername}
+                      onChange={(e) => setNewUsername(e.target.value)}
+                      className="bg-black border border-x-border rounded px-2 py-1 text-sm focus:outline-none focus:border-x-blue"
+                      autoFocus
+                      onKeyPress={(e) => e.key === 'Enter' && handleUpdateUsername()}
+                    />
+                    <button
+                      onClick={handleUpdateUsername}
+                      className="text-green-500 hover:text-green-400"
+                    >
+                      <Check size={18} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNewUsername(profile?.username || '');
+                        setIsEditingName(false);
+                      }}
+                      className="text-red-500 hover:text-red-400"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 group">
+                    <h2 className="text-lg font-bold">{profile?.username || 'User'}</h2>
+                    <button
+                      onClick={() => setIsEditingName(true)}
+                      className="text-x-gray hover:text-white opacity-0 group-hover:opacity-100 transition"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
+                )}
                 <p className="text-x-gray text-xs">{user?.email}</p>
               </div>
             </div>
@@ -172,7 +323,7 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-x-border bg-black sticky top-[65px] z-10">
+      <div className="border-b border-x-border bg-black sticky top-[73px] z-10">
         <div className="flex px-4 overflow-x-auto">
           <button
             onClick={() => setActiveTab('overview')}
@@ -213,42 +364,66 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
           <div className="space-y-4">
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3">
-              <div className="border border-x-border rounded-2xl p-4">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="border border-x-border rounded-2xl p-4"
+              >
                 <div className="flex items-center space-x-2 mb-3">
                   <Calendar size={18} className="text-x-gray" />
                   <h3 className="text-sm text-x-gray">Total Sessions</h3>
                 </div>
                 <p className="text-3xl font-bold">{stats.totalSessions}</p>
-              </div>
+              </motion.div>
 
-              <div className="border border-x-border rounded-2xl p-4">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="border border-x-border rounded-2xl p-4"
+              >
                 <div className="flex items-center space-x-2 mb-3">
                   <Clock size={18} className="text-x-gray" />
                   <h3 className="text-sm text-x-gray">Avg Duration</h3>
                 </div>
                 <p className="text-3xl font-bold">{formatDuration(stats.avgDuration)}</p>
-              </div>
+              </motion.div>
 
-              <div className="border border-x-border rounded-2xl p-4">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="border border-x-border rounded-2xl p-4"
+              >
                 <div className="flex items-center space-x-2 mb-3">
                   <TrendingUp size={18} className="text-x-gray" />
                   <h3 className="text-sm text-x-gray">Current Streak</h3>
                 </div>
                 <p className="text-3xl font-bold">{stats.currentStreak}</p>
                 <p className="text-x-gray text-xs">days</p>
-              </div>
+              </motion.div>
 
-              <div className="border border-x-border rounded-2xl p-4">
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="border border-x-border rounded-2xl p-4"
+              >
                 <div className="flex items-center space-x-2 mb-3">
                   <Award size={18} className="text-x-gray" />
                   <h3 className="text-sm text-x-gray">Total Time</h3>
                 </div>
                 <p className="text-3xl font-bold">{formatDuration(stats.totalDuration)}</p>
-              </div>
+              </motion.div>
             </div>
 
             {/* Weekly Chart */}
-            <div className="border border-x-border rounded-2xl p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="border border-x-border rounded-2xl p-4"
+            >
               <h3 className="font-bold mb-4">This Week's Activity</h3>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={getWeeklyChartData()}>
@@ -262,10 +437,15 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
                   <Bar dataKey="sessions" fill="#3b82f6" radius={[8, 8, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            </div>
+            </motion.div>
 
             {/* Quick Stats */}
-            <div className="border border-x-border rounded-2xl p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="border border-x-border rounded-2xl p-4"
+            >
               <h3 className="font-bold mb-3">Recent Activity</h3>
               <div className="space-y-3">
                 <div className="flex justify-between">
@@ -285,7 +465,7 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
                   <span className="font-semibold">{circles.length}/3</span>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         )}
 
@@ -317,7 +497,7 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
                   </div>
                   <div className="w-full bg-gray-800 rounded-full h-2">
                     <div 
-                      className="bg-blue-600 h-2 rounded-full" 
+                      className="bg-blue-600 h-2 rounded-full transition-all" 
                       style={{ width: `${Math.min((stats.avgDuration / 1800) * 100, 100)}%` }}
                     ></div>
                   </div>
@@ -330,7 +510,7 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
                   </div>
                   <div className="w-full bg-gray-800 rounded-full h-2">
                     <div 
-                      className="bg-green-600 h-2 rounded-full" 
+                      className="bg-green-600 h-2 rounded-full transition-all" 
                       style={{ width: `${Math.min((stats.currentStreak / 30) * 100, 100)}%` }}
                     ></div>
                   </div>
@@ -379,8 +559,14 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
         {activeTab === 'history' && (
           <div className="space-y-2">
             {sessions.filter(s => s.end_time).length > 0 ? (
-              sessions.filter(s => s.end_time).map(session => (
-                <div key={session.id} className="border border-x-border rounded-xl p-4 hover:bg-x-hover transition-colors">
+              sessions.filter(s => s.end_time).map((session, i) => (
+                <motion.div
+                  key={session.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="border border-x-border rounded-xl p-4 hover:bg-x-hover transition-colors"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <div className="h-10 w-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
@@ -399,7 +585,7 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
                       <Users className="w-4 h-4 text-x-gray" />
                     )}
                   </div>
-                </div>
+                </motion.div>
               ))
             ) : (
               <div className="border border-x-border rounded-2xl p-12 text-center">
@@ -415,4 +601,4 @@ const Profile = ({ user, profile, sessions, circles, onLogout }) => {
   );
 };
 
-export default Profile;
+export default ProfileView;
