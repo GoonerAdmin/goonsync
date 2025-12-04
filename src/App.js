@@ -91,8 +91,19 @@ const App = () => {
 
   const loadCircles = async () => {
     if (!user) return;
-    const { data } = await supabase.from('circle_members').select('circle_id, circles(id, name, invite_code, created_by, created_at)').eq('user_id', user.id);
-    if (data) setCircles(data.map(d => d.circles));
+    const { data, error } = await supabase
+      .from('circle_members')
+      .select('circle_id, circles(id, name, invite_code, created_by, created_at)')
+      .eq('user_id', user.id);
+    
+    if (error) {
+      console.error('Failed to load circles:', error);
+    }
+    
+    if (data) {
+      console.log('Loaded circles:', data);
+      setCircles(data.map(d => d.circles));
+    }
   };
 
   const loadSessions = async () => {
@@ -704,13 +715,18 @@ const App = () => {
 
                 if (circleError) throw circleError;
 
-                await supabase.from('circle_members').insert([{ 
+                const { error: memberError } = await supabase.from('circle_members').insert([{ 
                   circle_id: circleData.id, 
                   user_id: user.id, 
                   username: profile.username 
                 }]);
 
-                loadCircles();
+                if (memberError) {
+                  console.error('Failed to add member:', memberError);
+                  throw memberError;
+                }
+
+                await loadCircles();
                 setAuthError(`Circle created! Code: ${inviteCode}`);
                 setTimeout(() => setAuthError(''), 5000);
                 return { success: true, message: `Circle created! Code: ${inviteCode}` };
