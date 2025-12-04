@@ -48,8 +48,45 @@ const App = () => {
   }, []);
 
   const loadProfile = async (userId) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (data) setProfile(data);
+    // Try to load profile, retry if it doesn't exist yet (trigger may still be running)
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (data) {
+        setProfile(data);
+        return;
+      }
+      
+      if (error && error.code !== 'PGRST116') {
+        // Real error (not just "not found")
+        console.error('Profile load error:', error);
+        break;
+      }
+      
+      // Profile not found yet, wait and retry
+      attempts++;
+      if (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // If we get here, profile still doesn't exist - try to create it manually
+    console.log('Profile not found after retries, creating manually...');
+    const username = userId.substring(0, 8);
+    const { data: newProfile } = await supabase
+      .from('profiles')
+      .insert([{ id: userId, username: username, avatar_url: null }])
+      .select()
+      .single();
+    
+    if (newProfile) setProfile(newProfile);
   };
 
   const loadCircles = async () => {
@@ -117,7 +154,7 @@ const App = () => {
     setAuthError('');
     
     if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({ 
+      const { data, error } = await supabase.auth.signInWithPassword({ 
         email: username.includes('@') ? username : `${username}@goonsync.com`, 
         password 
       });
@@ -125,6 +162,8 @@ const App = () => {
         setAuthError(error.message);
         setLoading(false);
       } else { 
+        // Wait for profile to load before showing dashboard
+        await loadProfile(data.user.id);
         setShowLoginModal(false); 
         setView('dashboard'); 
         setUsername('');
@@ -132,7 +171,7 @@ const App = () => {
         setLoading(false);
       }
     } else {
-      const { error } = await supabase.auth.signUp({ 
+      const { data, error } = await supabase.auth.signUp({ 
         email: username.includes('@') ? username : `${username}@goonsync.com`, 
         password, 
         options: { data: { username: username.split('@')[0] } } 
@@ -141,6 +180,10 @@ const App = () => {
         setAuthError(error.message);
         setLoading(false);
       } else { 
+        // Wait a moment for trigger to create profile, then load it
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await loadProfile(data.user.id);
+        
         setAuthError('');
         setShowLoginModal(false); 
         setView('dashboard');
