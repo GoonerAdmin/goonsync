@@ -726,7 +726,13 @@ const App = () => {
                   throw memberError;
                 }
 
+                // Wait a moment for database to fully commit
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                // Reload circles
                 await loadCircles();
+                
+                console.log('Circle created and loaded successfully');
                 setAuthError(`Circle created! Code: ${inviteCode}`);
                 setTimeout(() => setAuthError(''), 5000);
                 return { success: true, message: `Circle created! Code: ${inviteCode}` };
