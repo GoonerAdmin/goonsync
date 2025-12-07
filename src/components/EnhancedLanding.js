@@ -8,7 +8,7 @@ import {
   ArrowRight, Sparkles, Menu, X as CloseIcon, CheckCircle,
   Activity, BarChart3, Shield, Smartphone, Monitor, Star
 } from 'lucide-react';
-import AnimatedCounter from './components/AnimatedCounter';
+import AnimatedCounter from './AnimatedCounter';
 
 // Stats fetching function (add this to your App.js)
 const fetchLandingStats = async (supabase) => {
