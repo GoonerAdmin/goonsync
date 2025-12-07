@@ -366,25 +366,10 @@ const App = () => {
     );
   }
 
-  // Enhanced Landing Page
-  if (view === 'landing') {
-    return (
-      <EnhancedLanding 
-        supabase={supabase}
-        onGetStarted={() => setShowLoginModal(true)}
-      />
-    );
-  }
-
-  // Main app
+  // Render app with modal OUTSIDE views
   return (
-    <MainLayout 
-      view={view} 
-      setView={setView} 
-      user={user}
-      profile={profile}
-    >
-      {/* Achievement Notifications */}
+    <>
+      {/* Achievement Notifications - Always Available */}
       <AchievementNotification 
         achievements={newAchievements}
         onClose={() => setNewAchievements([])}
@@ -398,7 +383,7 @@ const App = () => {
         />
       )}
 
-      {/* Login Modal */}
+      {/* Login Modal - Always Available */}
       <AnimatePresence>
         {showLoginModal && (
           <motion.div
@@ -479,186 +464,204 @@ const App = () => {
         )}
       </AnimatePresence>
 
-      {/* Dashboard */}
-      {view === 'dashboard' && (
-        <Dashboard
+      {/* Landing Page */}
+      {view === 'landing' && (
+        <EnhancedLanding 
+          supabase={supabase}
+          onGetStarted={() => setShowLoginModal(true)}
+        />
+      )}
+
+      {/* Main App with MainLayout */}
+      {view !== 'landing' && (
+        <MainLayout 
+          view={view} 
+          setView={setView} 
           user={user}
           profile={profile}
-          isSyncing={isSyncing}
-          elapsedTime={elapsedTime}
-          onStartSync={startSync}
-          onStopSync={stopSync}
-          circles={circles}
-          sessions={sessions}
-          activeUsers={activeUsers}
-          analytics={analytics}
         >
-          <div className="p-4">
-            <XPBar totalXP={userXP.total_xp} currentLevel={userXP.current_level} />
-          </div>
-        </Dashboard>
-      )}
+          {/* Dashboard */}
+          {view === 'dashboard' && (
+            <Dashboard
+              user={user}
+              profile={profile}
+              isSyncing={isSyncing}
+              elapsedTime={elapsedTime}
+              onStartSync={startSync}
+              onStopSync={stopSync}
+              circles={circles}
+              sessions={sessions}
+              activeUsers={activeUsers}
+              analytics={analytics}
+            >
+              <div className="p-4">
+                <XPBar totalXP={userXP.total_xp} currentLevel={userXP.current_level} />
+              </div>
+            </Dashboard>
+          )}
 
-      {/* Analytics */}
-      {view === 'analytics' && (
-        <div className="min-h-screen pb-20">
-          <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
-            <h2 className="text-2xl font-bold flex items-center space-x-2">
-              <TrendingUp size={24} className="text-x-blue" />
-              <span>Analytics</span>
-            </h2>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
-                <p className="text-gray-400 text-sm mb-1">Total Sessions</p>
-                <p className="text-3xl font-bold">{analytics?.totalSessions || 0}</p>
+          {/* Analytics */}
+          {view === 'analytics' && (
+            <div className="min-h-screen pb-20">
+              <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
+                <h2 className="text-2xl font-bold flex items-center space-x-2">
+                  <TrendingUp size={24} className="text-x-blue" />
+                  <span>Analytics</span>
+                </h2>
               </div>
-              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
-                <p className="text-gray-400 text-sm mb-1">Total Time</p>
-                <p className="text-3xl font-bold">
-                  {Math.floor((analytics?.totalTime || 0) / 3600)}h {Math.floor(((analytics?.totalTime || 0) % 3600) / 60)}m
-                </p>
-              </div>
-              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
-                <p className="text-gray-400 text-sm mb-1">Avg Duration</p>
-                <p className="text-3xl font-bold">{Math.floor((analytics?.avgDuration || 0) / 60)}m</p>
-              </div>
-              <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
-                <p className="text-gray-400 text-sm mb-1">Longest</p>
-                <p className="text-3xl font-bold">{Math.floor((analytics?.longestSession || 0) / 60)}m</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* History */}
-      {view === 'history' && (
-        <div className="min-h-screen pb-20">
-          <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
-            <h2 className="text-2xl font-bold flex items-center space-x-2">
-              <History size={24} className="text-x-blue" />
-              <span>History</span>
-            </h2>
-          </div>
-          <div className="p-4 space-y-3">
-            {sessions.length === 0 ? (
-              <div className="border border-x-border rounded-2xl p-12 text-center">
-                <Clock size={48} className="mx-auto mb-4 text-x-gray" />
-                <p className="text-x-gray">No sessions yet</p>
-              </div>
-            ) : (
-              sessions.map(session => (
-                <div key={session.id} className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold">{new Date(session.created_at).toLocaleDateString()}</p>
-                      <p className="text-sm text-gray-400">{new Date(session.created_at).toLocaleTimeString()}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">{Math.floor((session.duration_seconds || 0) / 60)}m</p>
-                      <p className="text-xs text-gray-400">{session.duration_seconds || 0}s</p>
-                    </div>
+              <div className="p-4 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                    <p className="text-gray-400 text-sm mb-1">Total Sessions</p>
+                    <p className="text-3xl font-bold">{analytics?.totalSessions || 0}</p>
+                  </div>
+                  <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                    <p className="text-gray-400 text-sm mb-1">Total Time</p>
+                    <p className="text-3xl font-bold">
+                      {Math.floor((analytics?.totalTime || 0) / 3600)}h {Math.floor(((analytics?.totalTime || 0) % 3600) / 60)}m
+                    </p>
+                  </div>
+                  <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                    <p className="text-gray-400 text-sm mb-1">Avg Duration</p>
+                    <p className="text-3xl font-bold">{Math.floor((analytics?.avgDuration || 0) / 60)}m</p>
+                  </div>
+                  <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                    <p className="text-gray-400 text-sm mb-1">Longest</p>
+                    <p className="text-3xl font-bold">{Math.floor((analytics?.longestSession || 0) / 60)}m</p>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
+              </div>
+            </div>
+          )}
+
+          {/* History */}
+          {view === 'history' && (
+            <div className="min-h-screen pb-20">
+              <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
+                <h2 className="text-2xl font-bold flex items-center space-x-2">
+                  <History size={24} className="text-x-blue" />
+                  <span>History</span>
+                </h2>
+              </div>
+              <div className="p-4 space-y-3">
+                {sessions.length === 0 ? (
+                  <div className="border border-x-border rounded-2xl p-12 text-center">
+                    <Clock size={48} className="mx-auto mb-4 text-x-gray" />
+                    <p className="text-x-gray">No sessions yet</p>
+                  </div>
+                ) : (
+                  sessions.map(session => (
+                    <div key={session.id} className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold">{new Date(session.created_at).toLocaleDateString()}</p>
+                          <p className="text-sm text-gray-400">{new Date(session.created_at).toLocaleTimeString()}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg">{Math.floor((session.duration_seconds || 0) / 60)}m</p>
+                          <p className="text-xs text-gray-400">{session.duration_seconds || 0}s</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Circles */}
+          {view === 'circles' && (
+            <CirclesView
+              user={user}
+              profile={profile}
+              circles={circles}
+              onCreateCircle={async (name) => {
+                try {
+                  const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+                  const { data: circleData, error: circleError } = await supabase
+                    .from('circles')
+                    .insert([{ name, invite_code: inviteCode, created_by: user.id }])
+                    .select()
+                    .single();
+
+                  if (circleError) throw circleError;
+
+                  const { error: memberError } = await supabase
+                    .from('circle_members')
+                    .insert([{ 
+                      circle_id: circleData.id, 
+                      user_id: user.id, 
+                      username: profile.username 
+                    }]);
+
+                  if (memberError) {
+                    console.error('Failed to add member:', memberError);
+                    throw memberError;
+                  }
+
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  await loadCircles();
+                  
+                  console.log('Circle created successfully');
+                  setAuthError(`Circle created! Code: ${inviteCode}`);
+                  setTimeout(() => setAuthError(''), 5000);
+                  return { success: true, message: `Circle created! Code: ${inviteCode}` };
+                } catch (error) {
+                  return { success: false, error: error.message };
+                }
+              }}
+              onJoinCircle={async (code) => {
+                try {
+                  const { data: circle } = await supabase
+                    .from('circles')
+                    .select('*')
+                    .eq('invite_code', code.toUpperCase())
+                    .single();
+                  
+                  if (!circle) return { success: false, error: 'Invalid invite code' };
+
+                  const { error } = await supabase
+                    .from('circle_members')
+                    .insert([{ 
+                      circle_id: circle.id, 
+                      user_id: user.id, 
+                      username: profile.username 
+                    }]);
+                  
+                  if (error) return { success: false, error: error.message };
+                  
+                  loadCircles();
+                  return { success: true, message: `Joined ${circle.name}!` };
+                } catch (error) {
+                  return { success: false, error: error.message };
+                }
+              }}
+              leaderboard={leaderboard}
+              onLoadLeaderboard={loadLeaderboard}
+            />
+          )}
+
+          {/* Achievements */}
+          {view === 'achievements' && (
+            <AchievementsPage
+              user={user}
+              supabase={supabase}
+            />
+          )}
+
+          {/* Profile */}
+          {view === 'profile' && (
+            <ProfileView
+              user={user}
+              profile={profile}
+              onLogout={handleLogout}
+              supabase={supabase}
+              onProfileUpdate={() => loadProfile(user.id)}
+            />
+          )}
+        </MainLayout>
       )}
-
-      {/* Circles */}
-      {view === 'circles' && (
-        <CirclesView
-          user={user}
-          profile={profile}
-          circles={circles}
-          onCreateCircle={async (name) => {
-            try {
-              const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
-              const { data: circleData, error: circleError } = await supabase
-                .from('circles')
-                .insert([{ name, invite_code: inviteCode, created_by: user.id }])
-                .select()
-                .single();
-
-              if (circleError) throw circleError;
-
-              const { error: memberError } = await supabase
-                .from('circle_members')
-                .insert([{ 
-                  circle_id: circleData.id, 
-                  user_id: user.id, 
-                  username: profile.username 
-                }]);
-
-              if (memberError) {
-                console.error('Failed to add member:', memberError);
-                throw memberError;
-              }
-
-              await new Promise(resolve => setTimeout(resolve, 500));
-              await loadCircles();
-              
-              console.log('Circle created successfully');
-              setAuthError(`Circle created! Code: ${inviteCode}`);
-              setTimeout(() => setAuthError(''), 5000);
-              return { success: true, message: `Circle created! Code: ${inviteCode}` };
-            } catch (error) {
-              return { success: false, error: error.message };
-            }
-          }}
-          onJoinCircle={async (code) => {
-            try {
-              const { data: circle } = await supabase
-                .from('circles')
-                .select('*')
-                .eq('invite_code', code.toUpperCase())
-                .single();
-              
-              if (!circle) return { success: false, error: 'Invalid invite code' };
-
-              const { error } = await supabase
-                .from('circle_members')
-                .insert([{ 
-                  circle_id: circle.id, 
-                  user_id: user.id, 
-                  username: profile.username 
-                }]);
-              
-              if (error) return { success: false, error: error.message };
-              
-              loadCircles();
-              return { success: true, message: `Joined ${circle.name}!` };
-            } catch (error) {
-              return { success: false, error: error.message };
-            }
-          }}
-          leaderboard={leaderboard}
-          onLoadLeaderboard={loadLeaderboard}
-        />
-      )}
-
-      {/* Achievements */}
-      {view === 'achievements' && (
-        <AchievementsPage
-          user={user}
-          supabase={supabase}
-        />
-      )}
-
-      {/* Profile */}
-      {view === 'profile' && (
-        <ProfileView
-          user={user}
-          profile={profile}
-          onLogout={handleLogout}
-          supabase={supabase}
-          onProfileUpdate={() => loadProfile(user.id)}
-        />
-      )}
-    </MainLayout>
+    </>
   );
 };
 
