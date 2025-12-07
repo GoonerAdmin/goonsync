@@ -19,24 +19,33 @@ import { createAchievementChecker } from './utils/achievementChecker';
 import { EnhancedLanding } from './components/EnhancedLanding';
 
 const App = () => {
+  // Core state
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [view, setView] = useState('landing');
   const [loading, setLoading] = useState(true);
+  
+  // Auth state
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
+  const [authError, setAuthError] = useState('');
+  
+  // Session state
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStartTime, setSyncStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentSessionId, setCurrentSessionId] = useState(null);
+  
+  // Data state
   const [circles, setCircles] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [activeUsers, setActiveUsers] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
+  
+  // UI state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [authError, setAuthError] = useState('');
 
   // Achievement system state
   const [achievementChecker] = useState(() => createAchievementChecker(supabase));
@@ -44,6 +53,7 @@ const App = () => {
   const [newAchievements, setNewAchievements] = useState([]);
   const [showLevelUp, setShowLevelUp] = useState(null);
 
+  // Initialize auth
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
@@ -69,8 +79,8 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Load profile with retry logic
   const loadProfile = async (userId) => {
-    // Try to load profile, retry if it doesn't exist yet (trigger may still be running)
     let attempts = 0;
     const maxAttempts = 3;
     
@@ -87,19 +97,17 @@ const App = () => {
       }
       
       if (error && error.code !== 'PGRST116') {
-        // Real error (not just "not found")
         console.error('Profile load error:', error);
         break;
       }
       
-      // Profile not found yet, wait and retry
       attempts++;
       if (attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
     
-    // If we get here, profile still doesn't exist - try to create it manually
+    // Create profile manually if needed
     console.log('Profile not found after retries, creating manually...');
     const username = userId.substring(0, 8);
     const { data: newProfile } = await supabase
@@ -111,11 +119,13 @@ const App = () => {
     if (newProfile) setProfile(newProfile);
   };
 
+  // Load user XP
   const loadUserXP = async (userId) => {
     const xpData = await achievementChecker.getUserXP(userId);
     setUserXP(xpData);
   };
 
+  // Load circles
   const loadCircles = async () => {
     if (!user) return;
     const { data, error } = await supabase
@@ -133,33 +143,60 @@ const App = () => {
     }
   };
 
+  // Load sessions
   const loadSessions = async () => {
     if (!user) return;
-    const { data } = await supabase.from('sessions').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
+    const { data } = await supabase
+      .from('sessions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
     if (data) setSessions(data);
   };
 
+  // Load active users
   const loadActiveUsers = async () => {
     if (!user || circles.length === 0) return;
-    const { data } = await supabase.from('active_syncs').select('user_id, username, circle_id').in('circle_id', circles.map(c => c.id));
+    const { data } = await supabase
+      .from('active_syncs')
+      .select('user_id, username, circle_id')
+      .in('circle_id', circles.map(c => c.id));
     if (data) setActiveUsers(data);
   };
 
+  // Load leaderboard
   const loadLeaderboard = async (circleId) => {
-    const { data } = await supabase.from('sessions').select('user_id, username').eq('circle_id', circleId);
+    const { data } = await supabase
+      .from('sessions')
+      .select('user_id, username')
+      .eq('circle_id', circleId);
+    
     if (data) {
       const userTimes = data.reduce((acc, s) => {
         if (!acc[s.username]) acc[s.username] = 0;
         acc[s.username] += s.duration_seconds || 0;
         return acc;
       }, {});
-      const sorted = Object.entries(userTimes).map(([username, totalSeconds]) => ({ username, totalSeconds })).sort((a, b) => b.totalSeconds - a.totalSeconds);
+      const sorted = Object.entries(userTimes)
+        .map(([username, totalSeconds]) => ({ username, totalSeconds }))
+        .sort((a, b) => b.totalSeconds - a.totalSeconds);
       setLeaderboard(sorted);
     }
   };
 
-  useEffect(() => { if (user) { loadCircles(); loadSessions(); } }, [user, view]);
-  useEffect(() => { if (circles.length > 0) loadActiveUsers(); }, [circles]);
+  // Load data when user or view changes
+  useEffect(() => { 
+    if (user) { 
+      loadCircles(); 
+      loadSessions(); 
+    } 
+  }, [user, view]);
+
+  useEffect(() => { 
+    if (circles.length > 0) loadActiveUsers(); 
+  }, [circles]);
+
+  // Timer effect
   useEffect(() => {
     if (!isSyncing || !syncStartTime) return;
     const interval = setInterval(() => {
@@ -168,15 +205,22 @@ const App = () => {
     return () => clearInterval(interval);
   }, [isSyncing, syncStartTime]);
 
+  // Handle authentication
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthError('');
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ email: `${username}@goonsync.com`, password });
+        const { error } = await supabase.auth.signInWithPassword({ 
+          email: `${username}@goonsync.com`, 
+          password 
+        });
         if (error) throw error;
       } else {
-        const { data, error } = await supabase.auth.signUp({ email: `${username}@goonsync.com`, password });
+        const { data, error } = await supabase.auth.signUp({ 
+          email: `${username}@goonsync.com`, 
+          password 
+        });
         if (error) throw error;
         if (data.user) {
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -193,6 +237,7 @@ const App = () => {
     }
   };
 
+  // Handle logout
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -200,6 +245,7 @@ const App = () => {
     setView('landing');
   };
 
+  // Start sync
   const startSync = async () => {
     if (!user || !profile) return;
     
@@ -210,62 +256,72 @@ const App = () => {
 
     const selectedCircle = circles.length > 0 ? circles[0] : null;
     
-    const { data: sessionData } = await supabase.from('sessions').insert([{
-      user_id: user.id,
-      username: profile.username,
-      circle_id: selectedCircle?.id || null,
-      start_time: new Date(now).toISOString()
-    }]).select().single();
+    const { data: sessionData } = await supabase
+      .from('sessions')
+      .insert([{
+        user_id: user.id,
+        username: profile.username,
+        circle_id: selectedCircle?.id || null,
+        start_time: new Date(now).toISOString()
+      }])
+      .select()
+      .single();
 
     if (sessionData) {
       setCurrentSessionId(sessionData.id);
     }
 
-    await supabase.from('active_syncs').insert([{
-      user_id: user.id,
-      username: profile.username,
-      circle_id: selectedCircle?.id || null
-    }]);
+    await supabase
+      .from('active_syncs')
+      .insert([{
+        user_id: user.id,
+        username: profile.username,
+        circle_id: selectedCircle?.id || null
+      }]);
     
     loadActiveUsers();
   };
 
+  // Stop sync with achievements
   const stopSync = async () => {
     const duration = elapsedTime;
     
     if (currentSessionId) {
-      // Update session with end time
-      await supabase.from('sessions').update({ 
-        end_time: new Date().toISOString(), 
-        duration_seconds: duration 
-      }).eq('id', currentSessionId);
+      // Update session
+      await supabase
+        .from('sessions')
+        .update({ 
+          end_time: new Date().toISOString(), 
+          duration_seconds: duration 
+        })
+        .eq('id', currentSessionId);
       
-      // Calculate and award XP for this session
+      // Award session XP
       const sessionXP = achievementChecker.calculateSessionXP(duration);
       await achievementChecker.awardXP(user.id, sessionXP);
       
-      // Get the completed session
+      // Get completed session
       const { data: completedSession } = await supabase
         .from('sessions')
         .select('*')
         .eq('id', currentSessionId)
         .single();
       
-      // Update user stats
+      // Update stats
       if (completedSession) {
         await achievementChecker.updateStatsAfterSession(user.id, completedSession);
       }
       
-      // Check for new achievements
-      const { newAchievements: unlockedAchievements, xpAwarded } = await achievementChecker.checkAndAwardAchievements(user.id);
+      // Check achievements
+      const { newAchievements: unlockedAchievements } = await achievementChecker.checkAndAwardAchievements(user.id);
       
-      // Show notifications
+      // Show achievement notifications
       if (unlockedAchievements.length > 0) {
         setNewAchievements(unlockedAchievements);
-        setTimeout(() => setNewAchievements([]), 5000); // Hide after 5 seconds
+        setTimeout(() => setNewAchievements([]), 5000);
       }
       
-      // Reload XP to show updated level
+      // Check for level up
       const updatedXP = await achievementChecker.getUserXP(user.id);
       if (updatedXP.current_level > userXP.current_level) {
         setShowLevelUp({ 
@@ -286,6 +342,7 @@ const App = () => {
     loadActiveUsers();
   };
 
+  // Get analytics
   const getAnalytics = () => {
     const totalSessions = sessions.length;
     const completedSessions = sessions.filter(s => s.duration_seconds);
@@ -297,6 +354,7 @@ const App = () => {
 
   const analytics = user ? getAnalytics() : null;
 
+  // Loading screen
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -318,6 +376,7 @@ const App = () => {
     );
   }
 
+  // Main app
   return (
     <MainLayout 
       view={view} 
@@ -420,6 +479,7 @@ const App = () => {
         )}
       </AnimatePresence>
 
+      {/* Dashboard */}
       {view === 'dashboard' && (
         <Dashboard
           user={user}
@@ -433,13 +493,13 @@ const App = () => {
           activeUsers={activeUsers}
           analytics={analytics}
         >
-          {/* XP Bar at top of dashboard */}
           <div className="p-4">
             <XPBar totalXP={userXP.total_xp} currentLevel={userXP.current_level} />
           </div>
         </Dashboard>
       )}
 
+      {/* Analytics */}
       {view === 'analytics' && (
         <div className="min-h-screen pb-20">
           <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
@@ -456,7 +516,9 @@ const App = () => {
               </div>
               <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
                 <p className="text-gray-400 text-sm mb-1">Total Time</p>
-                <p className="text-3xl font-bold">{Math.floor((analytics?.totalTime || 0) / 3600)}h {Math.floor(((analytics?.totalTime || 0) % 3600) / 60)}m</p>
+                <p className="text-3xl font-bold">
+                  {Math.floor((analytics?.totalTime || 0) / 3600)}h {Math.floor(((analytics?.totalTime || 0) % 3600) / 60)}m
+                </p>
               </div>
               <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
                 <p className="text-gray-400 text-sm mb-1">Avg Duration</p>
@@ -471,6 +533,7 @@ const App = () => {
         </div>
       )}
 
+      {/* History */}
       {view === 'history' && (
         <div className="min-h-screen pb-20">
           <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10 px-4 py-4">
@@ -505,6 +568,7 @@ const App = () => {
         </div>
       )}
 
+      {/* Circles */}
       {view === 'circles' && (
         <CirclesView
           user={user}
@@ -521,24 +585,23 @@ const App = () => {
 
               if (circleError) throw circleError;
 
-              const { error: memberError } = await supabase.from('circle_members').insert([{ 
-                circle_id: circleData.id, 
-                user_id: user.id, 
-                username: profile.username 
-              }]);
+              const { error: memberError } = await supabase
+                .from('circle_members')
+                .insert([{ 
+                  circle_id: circleData.id, 
+                  user_id: user.id, 
+                  username: profile.username 
+                }]);
 
               if (memberError) {
                 console.error('Failed to add member:', memberError);
                 throw memberError;
               }
 
-              // Wait a moment for database to fully commit
               await new Promise(resolve => setTimeout(resolve, 500));
-              
-              // Reload circles
               await loadCircles();
               
-              console.log('Circle created and loaded successfully');
+              console.log('Circle created successfully');
               setAuthError(`Circle created! Code: ${inviteCode}`);
               setTimeout(() => setAuthError(''), 5000);
               return { success: true, message: `Circle created! Code: ${inviteCode}` };
@@ -548,14 +611,21 @@ const App = () => {
           }}
           onJoinCircle={async (code) => {
             try {
-              const { data: circle } = await supabase.from('circles').select('*').eq('invite_code', code.toUpperCase()).single();
+              const { data: circle } = await supabase
+                .from('circles')
+                .select('*')
+                .eq('invite_code', code.toUpperCase())
+                .single();
+              
               if (!circle) return { success: false, error: 'Invalid invite code' };
 
-              const { error } = await supabase.from('circle_members').insert([{ 
-                circle_id: circle.id, 
-                user_id: user.id, 
-                username: profile.username 
-              }]);
+              const { error } = await supabase
+                .from('circle_members')
+                .insert([{ 
+                  circle_id: circle.id, 
+                  user_id: user.id, 
+                  username: profile.username 
+                }]);
               
               if (error) return { success: false, error: error.message };
               
@@ -570,6 +640,7 @@ const App = () => {
         />
       )}
 
+      {/* Achievements */}
       {view === 'achievements' && (
         <AchievementsPage
           user={user}
@@ -577,6 +648,7 @@ const App = () => {
         />
       )}
 
+      {/* Profile */}
       {view === 'profile' && (
         <ProfileView
           user={user}
