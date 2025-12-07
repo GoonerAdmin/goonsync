@@ -433,4 +433,7 @@ export const getProgressToNextLevel = (xp) => {
   return { current, required, percentage };
 };
 
+// Export LEVELS as LEVEL_SYSTEM for compatibility
+export { LEVELS as LEVEL_SYSTEM };
+
 export default ACHIEVEMENTS;
