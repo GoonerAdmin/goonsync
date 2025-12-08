@@ -148,7 +148,7 @@ const CirclesView = ({
 
   const handleLeaveCircle = async (circleId) => {
     if (!supabase) return;
-    if (!confirm('Are you sure you want to leave this circle?')) return;
+	if (!window.confirm('Are you sure you want to leave this circle?')) return;
 
     try {
       const { error } = await supabase
