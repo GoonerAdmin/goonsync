@@ -863,16 +863,16 @@ const App = () => {
           )}
 
           {/* CIRCLES VIEW */}
-          {view === 'circles' && (
-            <CirclesView
-              user={user}
-              profile={profile}
-              circles={circles}
-              onCreateCircle={handleCreateCircle}
-              onJoinCircle={handleJoinCircle}
-              leaderboard={leaderboard}
-              onLoadLeaderboard={loadLeaderboard}
-            />
+          <CirclesView
+			  user={user}
+			  profile={profile}
+			  circles={circles}
+			  onCreateCircle={handleCreateCircle}
+			  onJoinCircle={handleJoinCircle}
+			  leaderboard={leaderboard}
+			  onLoadLeaderboard={loadLeaderboard}
+			  supabase={apiClient}  // ← ADD THIS LINE!
+			/>
           )}
 
           {/* ACHIEVEMENTS VIEW */}
