@@ -1,5 +1,6 @@
 // Frontend API Client - Routes requests through goonsync.com API
 // This works on school WiFi because it doesn't call Supabase directly!
+// FIXED VERSION - Proper insert().select() chaining
 
 class ApiClient {
   constructor(baseURL = '') {
@@ -56,7 +57,6 @@ class ApiClient {
 
     onAuthStateChange: (callback) => {
       // For now, return a no-op subscription
-      // In production, you'd use WebSockets or polling
       return {
         data: { subscription: { unsubscribe: () => {} } }
       };
@@ -79,6 +79,7 @@ class QueryBuilder {
     this.isSingle = false;
     this.isCount = false;
     this.isHead = false;
+    this.insertedData = null;
   }
 
   select(fields = '*', options = {}) {
@@ -108,39 +109,11 @@ class QueryBuilder {
     return this;
   }
 
-  async insert(data) {
-    const response = await fetch(`${this.baseURL}/api/database`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        table: this.table,
-        action: 'insert',
-        data
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) return { data: null, error: new Error(result.error) };
-    
-    // Return in Supabase format
-    const queryResult = {
-      data: result.data,
-      error: null
-    };
-    
-    // Add chainable methods
-    queryResult.select = () => {
-      this.isSingle = false;
-      return this;
-    };
-    
-    queryResult.single = () => {
-      if (result.data && result.data.length > 0) {
-        return { data: result.data[0], error: null };
-      }
-      return { data: null, error: null };
-    };
-
-    return queryResult;
+  // FIXED: insert now returns a chainable builder
+  insert(data) {
+    this.insertedData = data;
+    // Return this builder so .select() can be called
+    return this;
   }
 
   async update(data) {
@@ -157,18 +130,7 @@ class QueryBuilder {
     const result = await response.json();
     if (!response.ok) return { data: null, error: new Error(result.error) };
     
-    // Return in Supabase format
-    const queryResult = {
-      data: result.data,
-      error: null
-    };
-    
-    queryResult.eq = (column, value) => {
-      // Already filtered
-      return this;
-    };
-
-    return queryResult;
+    return { data: result.data, error: null };
   }
 
   async delete() {
@@ -186,8 +148,37 @@ class QueryBuilder {
     return { error: null };
   }
 
+  // Then is called when awaiting the query
   async then(resolve, reject) {
     try {
+      // If we have inserted data, this is an insert query
+      if (this.insertedData !== null) {
+        const response = await fetch(`${this.baseURL}/api/database`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            table: this.table,
+            action: 'insert',
+            data: this.insertedData
+          })
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          return resolve({ data: null, error: new Error(result.error) });
+        }
+
+        let data = result.data;
+        
+        if (this.isSingle && data && data.length > 0) {
+          data = data[0];
+        }
+
+        return resolve({ data, error: null });
+      }
+
+      // Otherwise it's a select/count query
       let action = 'select';
       if (this.isCount) action = 'count';
 
