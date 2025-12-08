@@ -1,10 +1,24 @@
 // Frontend API Client - Routes requests through goonsync.com API
-// This works on school WiFi because it doesn't call Supabase directly!
-// FIXED VERSION - Proper insert().select() chaining
+// NOW WITH USER AUTHENTICATION TOKEN SUPPORT!
 
 class ApiClient {
   constructor(baseURL = '') {
     this.baseURL = baseURL;
+    this.accessToken = null; // Store user's JWT token
+  }
+
+  // Set the user's access token
+  setAccessToken(token) {
+    this.accessToken = token;
+  }
+
+  // Get headers with auth token
+  getHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+    return headers;
   }
 
   // Auth methods
@@ -18,6 +32,12 @@ class ApiClient {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
+      
+      // CRITICAL: Store the access token!
+      if (result.data?.session?.access_token) {
+        this.accessToken = result.data.session.access_token;
+      }
+      
       return result;
     },
 
@@ -30,6 +50,12 @@ class ApiClient {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
+      
+      // CRITICAL: Store the access token!
+      if (result.data?.session?.access_token) {
+        this.accessToken = result.data.session.access_token;
+      }
+      
       return result;
     },
 
@@ -41,6 +67,10 @@ class ApiClient {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
+      
+      // Clear the token on signout
+      this.accessToken = null;
+      
       return result;
     },
 
@@ -56,7 +86,6 @@ class ApiClient {
     },
 
     onAuthStateChange: (callback) => {
-      // For now, return a no-op subscription
       return {
         data: { subscription: { unsubscribe: () => {} } }
       };
@@ -65,14 +94,15 @@ class ApiClient {
 
   // Database methods
   from(table) {
-    return new QueryBuilder(table, this.baseURL);
+    return new QueryBuilder(table, this.baseURL, this.getHeaders.bind(this));
   }
 }
 
 class QueryBuilder {
-  constructor(table, baseURL) {
+  constructor(table, baseURL, getHeadersFn) {
     this.table = table;
     this.baseURL = baseURL;
+    this.getHeadersFn = getHeadersFn; // Function to get headers with auth token
     this.selectFields = '*';
     this.filtersList = {};
     this.orderBy = null;
@@ -109,17 +139,15 @@ class QueryBuilder {
     return this;
   }
 
-  // FIXED: insert now returns a chainable builder
   insert(data) {
     this.insertedData = data;
-    // Return this builder so .select() can be called
     return this;
   }
 
   async update(data) {
     const response = await fetch(`${this.baseURL}/api/database`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersFn(), // Include auth token!
       body: JSON.stringify({
         table: this.table,
         action: 'update',
@@ -136,7 +164,7 @@ class QueryBuilder {
   async delete() {
     const response = await fetch(`${this.baseURL}/api/database`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.getHeadersFn(), // Include auth token!
       body: JSON.stringify({
         table: this.table,
         action: 'delete',
@@ -148,14 +176,13 @@ class QueryBuilder {
     return { error: null };
   }
 
-  // Then is called when awaiting the query
   async then(resolve, reject) {
     try {
       // If we have inserted data, this is an insert query
       if (this.insertedData !== null) {
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.getHeadersFn(), // Include auth token!
           body: JSON.stringify({
             table: this.table,
             action: 'insert',
@@ -184,7 +211,7 @@ class QueryBuilder {
 
       const response = await fetch(`${this.baseURL}/api/database`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.getHeadersFn(), // Include auth token!
         body: JSON.stringify({
           table: this.table,
           action,
