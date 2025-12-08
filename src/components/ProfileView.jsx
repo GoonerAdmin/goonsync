@@ -31,34 +31,84 @@ const ProfileView = ({ user, profile, onLogout, supabase, onProfileUpdate }) => 
     setLoading(true);
     
     try {
-      // Load user stats
-      const { data: stats } = await supabase
+      // Try to load from user_stats table first
+      const { data: stats, error: statsError } = await supabase
         .from('user_stats')
         .select('*')
         .eq('user_id', user.id)
         .single();
       
-      if (stats) {
+      // If user_stats exists, use it
+      if (stats && !statsError) {
         setUserStats(stats);
         setUserXP({
           total_xp: stats.total_xp || 0,
           current_level: stats.current_level || 1
         });
+      } else {
+        // FALLBACK: Calculate from sessions if user_stats doesn't exist
+        console.log('user_stats not found, calculating from sessions...');
+        
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('sessions')
+          .select('duration_seconds')
+          .eq('user_id', user.id);
+
+        if (sessionsError) throw sessionsError;
+
+        if (sessions && sessions.length > 0) {
+          const totalSessions = sessions.length;
+          const totalTime = sessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+          const longestSession = Math.max(...sessions.map(s => s.duration_seconds || 0));
+
+          setUserStats({
+            total_sessions: totalSessions,
+            total_time: totalTime,
+            achievements_unlocked: 0,
+            longest_session: longestSession,
+            total_xp: 0,
+            current_level: 1
+          });
+        } else {
+          // No sessions at all
+          setUserStats({
+            total_sessions: 0,
+            total_time: 0,
+            achievements_unlocked: 0,
+            longest_session: 0,
+            total_xp: 0,
+            current_level: 1
+          });
+        }
+
+        setUserXP({
+          total_xp: 0,
+          current_level: 1
+        });
       }
 
       // Load recent achievements (last 5)
-      const { data: achievements } = await supabase
+      const { data: achievements, error: achievementsError } = await supabase
         .from('user_achievements')
         .select('achievement_id, unlocked_at')
         .eq('user_id', user.id)
         .order('unlocked_at', { ascending: false })
         .limit(5);
       
-      if (achievements) {
+      if (!achievementsError && achievements) {
         setRecentAchievements(achievements);
       }
     } catch (error) {
       console.error('Error loading stats:', error);
+      // Set default empty stats on error
+      setUserStats({
+        total_sessions: 0,
+        total_time: 0,
+        achievements_unlocked: 0,
+        longest_session: 0,
+        total_xp: 0,
+        current_level: 1
+      });
     } finally {
       setLoading(false);
     }

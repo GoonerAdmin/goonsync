@@ -87,31 +87,40 @@ const CirclesView = ({
     setLoadingDetails(true);
 
     try {
-      // Load members with their profile info
+      // Load members (just user_ids first)
       const { data: members, error: membersError } = await supabase
         .from('circle_members')
-        .select(`
-          user_id,
-          joined_at,
-          profiles:user_id (
-            id,
-            username,
-            avatar_url
-          )
-        `)
+        .select('user_id, joined_at')
         .eq('circle_id', circleId);
 
       if (membersError) throw membersError;
 
-      // Transform data for easier use
-      const formattedMembers = members?.map(m => ({
-        id: m.user_id,
-        username: m.profiles?.username || 'Unknown',
-        avatar_url: m.profiles?.avatar_url,
-        joined_at: m.joined_at
-      })) || [];
+      // Load profiles for these users (separate query)
+      if (members && members.length > 0) {
+        const userIds = members.map(m => m.user_id);
+        
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', userIds);
 
-      setCircleMembers(formattedMembers);
+        if (profilesError) throw profilesError;
+
+        // Merge members with their profiles
+        const formattedMembers = members.map(m => {
+          const profile = profiles?.find(p => p.id === m.user_id);
+          return {
+            id: m.user_id,
+            username: profile?.username || 'Unknown User',
+            avatar_url: profile?.avatar_url,
+            joined_at: m.joined_at
+          };
+        });
+
+        setCircleMembers(formattedMembers);
+      } else {
+        setCircleMembers([]);
+      }
 
       // Load circle stats
       const { data: sessions, error: sessionsError } = await supabase
@@ -130,10 +139,10 @@ const CirclesView = ({
         totalSessions,
         totalTime,
         avgTime,
-        memberCount: formattedMembers.length
+        memberCount: members?.length || 0
       });
 
-      // Load leaderboard for this circle
+      // CRITICAL: Load leaderboard automatically!
       if (onLoadLeaderboard) {
         await onLoadLeaderboard(circleId);
       }
