@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { table, action, data: queryData, filters, select, order } = req.body;
+  const { table, action, data: queryData, filters, select, order, limit } = req.body;
 
   // CRITICAL: Get user's JWT token from Authorization header
   const authHeader = req.headers.authorization;
@@ -62,6 +62,11 @@ export default async function handler(req, res) {
           params.append('order', `${order.column}.${order.ascending !== false ? 'asc' : 'desc'}`);
         }
         
+        // Apply limit
+        if (limit) {
+          params.append('limit', limit);
+        }
+        
         if (params.toString()) url += '?' + params.toString();
         break;
       }
@@ -84,6 +89,22 @@ export default async function handler(req, res) {
           });
           url += '?' + params.toString();
         }
+        break;
+      }
+
+      case 'upsert': {
+        method = 'POST';
+        body = JSON.stringify(queryData);
+        
+        // Upsert uses Prefer header
+        headers['Prefer'] = 'resolution=merge-duplicates';
+        
+        // If onConflict specified, add to Prefer header
+        const options = req.body.options || {};
+        if (options.onConflict) {
+          headers['Prefer'] += `,on_conflict=${options.onConflict}`;
+        }
+        
         break;
       }
 

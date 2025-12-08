@@ -103,6 +103,9 @@ class QueryBuilder {
     this.isHead = false;
     this.insertedData = null;
     this.updateData = null;
+    this.upsertData = null;
+    this.upsertOptions = {};
+    this.isDelete = false;
   }
 
   select(fields = '*', options = {}) {
@@ -151,19 +154,19 @@ class QueryBuilder {
     return this;
   }
 
-  async delete() {
-    const response = await fetch(`${this.baseURL}/api/database`, {
-      method: 'POST',
-      headers: this.apiClient.getHeaders(),
-      body: JSON.stringify({
-        table: this.table,
-        action: 'delete',
-        filters: this.filtersList
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) return { error: new Error(result.error) };
-    return { error: null };
+  upsert(data, options = {}) {
+    // Store upsert data and options for later execution
+    this.upsertData = data;
+    this.upsertOptions = options;
+    // Return this builder so .select() can be called
+    return this;
+  }
+
+  delete() {
+    // Mark this as a delete operation
+    this.isDelete = true;
+    // Return this builder so .eq() can be called
+    return this;
   }
 
   // Then is called when awaiting the query
@@ -205,6 +208,55 @@ class QueryBuilder {
             table: this.table,
             action: 'update',
             data: this.updateData,
+            filters: this.filtersList
+          })
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          return resolve({ data: null, error: new Error(result.error) });
+        }
+
+        return resolve({ data: result.data, error: null });
+      }
+
+      // If we have upsert data, this is an upsert query
+      if (this.upsertData !== null && this.upsertData !== undefined) {
+        const response = await fetch(`${this.baseURL}/api/database`, {
+          method: 'POST',
+          headers: this.apiClient.getHeaders(),
+          body: JSON.stringify({
+            table: this.table,
+            action: 'upsert',
+            data: this.upsertData,
+            options: this.upsertOptions
+          })
+        });
+
+        const result = await response.json();
+        
+        if (!response.ok) {
+          return resolve({ data: null, error: new Error(result.error) });
+        }
+
+        let data = result.data;
+        
+        if (this.isSingle && data && data.length > 0) {
+          data = data[0];
+        }
+
+        return resolve({ data, error: null });
+      }
+
+      // If this is a delete operation
+      if (this.isDelete) {
+        const response = await fetch(`${this.baseURL}/api/database`, {
+          method: 'POST',
+          headers: this.apiClient.getHeaders(),
+          body: JSON.stringify({
+            table: this.table,
+            action: 'delete',
             filters: this.filtersList
           })
         });
