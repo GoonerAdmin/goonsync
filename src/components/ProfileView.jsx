@@ -1,601 +1,437 @@
 import React, { useState, useEffect } from 'react';
-import { User, Clock, TrendingUp, Users, Calendar, Award, LogOut, Edit2, Camera, X, Check, Settings as SettingsIcon } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import { 
+  User, LogOut, Camera, Save, Trophy, Clock, TrendingUp, 
+  Award, Target, Zap, Calendar, Activity
+} from 'lucide-react';
+import Button from './Button';
 
-const ProfileView = ({ user, profile, sessions, circles, onLogout, supabase, onProfileUpdate }) => {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [isEditingName, setIsEditingName] = useState(false);
+const ProfileView = ({ user, profile, onLogout, supabase, onProfileUpdate }) => {
+  const [editing, setEditing] = useState(false);
   const [newUsername, setNewUsername] = useState(profile?.username || '');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [profileImage, setProfileImage] = useState(null);
-  const [stats, setStats] = useState({
-    totalSessions: 0,
-    totalDuration: 0,
-    avgDuration: 0,
-    currentStreak: 0,
-    longestStreak: 0,
-    thisWeekSessions: 0,
-    thisMonthSessions: 0
-  });
+  const [newAvatarUrl, setNewAvatarUrl] = useState(profile?.avatar_url || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Stats state
+  const [userStats, setUserStats] = useState(null);
+  const [userXP, setUserXP] = useState({ total_xp: 0, current_level: 1 });
+  const [recentAchievements, setRecentAchievements] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (sessions && sessions.length > 0) {
-      calculateStats(sessions);
+    if (user && profile) {
+      loadUserStats();
     }
-    loadProfileImage();
-  }, [sessions]);
+  }, [user, profile]);
 
-  const loadProfileImage = async () => {
-    if (!profile?.avatar_url) return;
-    setProfileImage(profile.avatar_url);
+  const loadUserStats = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    
+    try {
+      // Load user stats
+      const { data: stats } = await supabase
+        .from('user_stats')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (stats) {
+        setUserStats(stats);
+        setUserXP({
+          total_xp: stats.total_xp || 0,
+          current_level: stats.current_level || 1
+        });
+      }
+
+      // Load recent achievements (last 5)
+      const { data: achievements } = await supabase
+        .from('user_achievements')
+        .select('achievement_id, unlocked_at')
+        .eq('user_id', user.id)
+        .order('unlocked_at', { ascending: false })
+        .limit(5);
+      
+      if (achievements) {
+        setRecentAchievements(achievements);
+      }
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    // Check file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be less than 2MB');
+  const handleSave = async () => {
+    if (!newUsername.trim()) {
+      setError('Username cannot be empty');
       return;
     }
 
-    setIsUploadingImage(true);
+    setSaving(true);
+    setError('');
 
     try {
-      // Create unique filename
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `avatars/${fileName}`;
-
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
-      const avatarUrl = urlData.publicUrl;
-
-      // Update profile
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: avatarUrl })
+        .update({
+          username: newUsername.trim(),
+          avatar_url: newAvatarUrl.trim() || null
+        })
         .eq('id', user.id);
 
       if (updateError) throw updateError;
 
-      setProfileImage(avatarUrl);
-      if (onProfileUpdate) onProfileUpdate();
-      
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      alert('Failed to upload image. Please try again.');
+      setEditing(false);
+      if (onProfileUpdate) {
+        onProfileUpdate();
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to update profile');
     } finally {
-      setIsUploadingImage(false);
+      setSaving(false);
     }
   };
 
-  const handleUpdateUsername = async () => {
-    if (!newUsername.trim() || newUsername === profile?.username) {
-      setIsEditingName(false);
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ username: newUsername.trim() })
-        .eq('id', user.id);
-
-      if (error) throw error;
-
-      setIsEditingName(false);
-      if (onProfileUpdate) onProfileUpdate();
-    } catch (error) {
-      console.error('Error updating username:', error);
-      alert('Failed to update username. It may already be taken.');
-    }
+  const handleCancel = () => {
+    setNewUsername(profile?.username || '');
+    setNewAvatarUrl(profile?.avatar_url || '');
+    setEditing(false);
+    setError('');
   };
 
-  const calculateStats = (sessionsData) => {
-    const completedSessions = sessionsData.filter(s => s.end_time && s.duration_seconds);
-    
-    const totalSessions = completedSessions.length;
-    const totalDuration = completedSessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
-    const avgDuration = totalSessions > 0 ? Math.round(totalDuration / totalSessions) : 0;
-
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    const thisWeekSessions = completedSessions.filter(s => 
-      new Date(s.start_time) >= weekAgo
-    ).length;
-
-    const monthAgo = new Date();
-    monthAgo.setDate(monthAgo.getDate() - 30);
-    const thisMonthSessions = completedSessions.filter(s => 
-      new Date(s.start_time) >= monthAgo
-    ).length;
-
-    const { currentStreak, longestStreak } = calculateStreaks(completedSessions);
-
-    setStats({
-      totalSessions,
-      totalDuration,
-      avgDuration,
-      currentStreak,
-      longestStreak,
-      thisWeekSessions,
-      thisMonthSessions
-    });
-  };
-
-  const calculateStreaks = (sessionsData) => {
-    if (sessionsData.length === 0) return { currentStreak: 0, longestStreak: 0 };
-
-    const sorted = [...sessionsData].sort((a, b) => 
-      new Date(a.start_time) - new Date(b.start_time)
-    );
-
-    const days = new Set(sorted.map(s => 
-      new Date(s.start_time).toDateString()
-    ));
-    const uniqueDays = Array.from(days).sort((a, b) => 
-      new Date(a) - new Date(b)
-    );
-
-    let currentStreak = 0;
-    let longestStreak = 0;
-    let tempStreak = 1;
-
-    for (let i = 1; i < uniqueDays.length; i++) {
-      const prevDay = new Date(uniqueDays[i - 1]);
-      const currDay = new Date(uniqueDays[i]);
-      const diffDays = Math.floor((currDay - prevDay) / (1000 * 60 * 60 * 24));
-
-      if (diffDays === 1) {
-        tempStreak++;
-      } else {
-        longestStreak = Math.max(longestStreak, tempStreak);
-        tempStreak = 1;
-      }
-    }
-    longestStreak = Math.max(longestStreak, tempStreak);
-
-    const lastDay = new Date(uniqueDays[uniqueDays.length - 1]);
-    const today = new Date();
-    const daysSinceLastSession = Math.floor((today - lastDay) / (1000 * 60 * 60 * 24));
-    
-    if (daysSinceLastSession <= 1) {
-      currentStreak = tempStreak;
-    }
-
-    return { currentStreak, longestStreak };
-  };
-
-  const getWeeklyChartData = () => {
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    
-    const dailyData = {};
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dayName = days[date.getDay()];
-      dailyData[dayName] = { day: dayName, sessions: 0, duration: 0 };
-    }
-
-    sessions.filter(s => s.end_time && new Date(s.start_time) >= weekAgo).forEach(session => {
-      const date = new Date(session.start_time);
-      const dayName = days[date.getDay()];
-      if (dailyData[dayName]) {
-        dailyData[dayName].sessions += 1;
-        dailyData[dayName].duration += (session.duration_seconds || 0) / 60;
-      }
-    });
-
-    return Object.values(dailyData);
-  };
-
-  const formatDuration = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${secs}s`;
-    } else {
-      return `${secs}s`;
-    }
-  };
-
+  // Format date
   const formatDate = (dateString) => {
+    if (!dateString) return 'Unknown';
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      year: 'numeric' 
     });
   };
 
+  // Format time duration
+  const formatDuration = (seconds) => {
+    if (!seconds) return '0m';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
+  if (!profile) {
+    return (
+      <div className="min-h-screen pb-20 flex items-center justify-center">
+        <div className="text-center">
+          <User size={48} className="mx-auto mb-4 text-gray-600" />
+          <p className="text-gray-400">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-20 bg-black">
       {/* Header */}
-      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10">
-        <div className="px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {/* Profile Image */}
-              <div className="relative group">
-                {profileImage ? (
+      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-gray-800 z-10 px-4 py-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold flex items-center space-x-2 text-white">
+            <User size={24} className="text-blue-500" />
+            <span>Profile</span>
+          </h2>
+          <Button
+            onClick={onLogout}
+            variant="secondary"
+            className="flex items-center space-x-2"
+          >
+            <LogOut size={16} />
+            <span>Logout</span>
+          </Button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-6">
+        {/* Profile Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30"
+        >
+          <div className="flex items-start justify-between mb-6">
+            <div className="flex items-center space-x-4">
+              {/* Avatar */}
+              <div className="relative">
+                {profile.avatar_url ? (
                   <img 
-                    src={profileImage} 
-                    alt={profile?.username}
-                    className="h-12 w-12 rounded-full object-cover border-2 border-gray-700"
+                    src={profile.avatar_url} 
+                    alt="Avatar"
+                    className="h-20 w-20 rounded-full object-cover border-2 border-gray-700"
                   />
                 ) : (
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                    {profile?.username?.[0]?.toUpperCase() || 'U'}
+                  <div className="h-20 w-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                    <User size={32} className="text-white" />
                   </div>
                 )}
-                
-                {/* Upload Button Overlay */}
-                <label className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer">
-                  <Camera size={16} className="text-white" />
-                  <input 
-                    type="file" 
-                    accept="image/*" 
-                    onChange={handleImageUpload}
-                    className="hidden"
-                    disabled={isUploadingImage}
-                  />
-                </label>
-                
-                {isUploadingImage && (
-                  <div className="absolute inset-0 bg-black/80 rounded-full flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-2 border-white border-t-transparent"></div>
+                {editing && (
+                  <div className="absolute -bottom-2 -right-2 h-8 w-8 bg-blue-500 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-600 transition">
+                    <Camera size={16} className="text-white" />
                   </div>
                 )}
               </div>
 
+              {/* Username */}
               <div>
-                {/* Editable Username */}
-                {isEditingName ? (
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="text"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                      className="bg-black border border-x-border rounded px-2 py-1 text-sm focus:outline-none focus:border-x-blue"
-                      autoFocus
-                      onKeyPress={(e) => e.key === 'Enter' && handleUpdateUsername()}
-                    />
-                    <button
-                      onClick={handleUpdateUsername}
-                      className="text-green-500 hover:text-green-400"
-                    >
-                      <Check size={18} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setNewUsername(profile?.username || '');
-                        setIsEditingName(false);
-                      }}
-                      className="text-red-500 hover:text-red-400"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
+                {editing ? (
+                  <input
+                    type="text"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                    className="px-3 py-2 bg-black border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                    placeholder="Username"
+                  />
                 ) : (
-                  <div className="flex items-center space-x-2 group">
-                    <h2 className="text-lg font-bold">{profile?.username || 'User'}</h2>
-                    <button
-                      onClick={() => setIsEditingName(true)}
-                      className="text-x-gray hover:text-white opacity-0 group-hover:opacity-100 transition"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
-                )}
-                <p className="text-x-gray text-xs">{user?.email}</p>
-              </div>
-            </div>
-            <button
-              onClick={onLogout}
-              className="text-x-gray hover:text-white transition p-2"
-            >
-              <LogOut size={20} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-x-border bg-black sticky top-[73px] z-10">
-        <div className="flex px-4 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`py-3 px-4 font-medium text-sm transition border-b-2 whitespace-nowrap ${
-              activeTab === 'overview'
-                ? 'border-x-blue text-white'
-                : 'border-transparent text-x-gray hover:text-white'
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`py-3 px-4 font-medium text-sm transition border-b-2 whitespace-nowrap ${
-              activeTab === 'analytics'
-                ? 'border-x-blue text-white'
-                : 'border-transparent text-x-gray hover:text-white'
-            }`}
-          >
-            Analytics
-          </button>
-          <button
-            onClick={() => setActiveTab('history')}
-            className={`py-3 px-4 font-medium text-sm transition border-b-2 whitespace-nowrap ${
-              activeTab === 'history'
-                ? 'border-x-blue text-white'
-                : 'border-transparent text-x-gray hover:text-white'
-            }`}
-          >
-            History
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="p-4">
-        {activeTab === 'overview' && (
-          <div className="space-y-4">
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-3">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="border border-x-border rounded-2xl p-4"
-              >
-                <div className="flex items-center space-x-2 mb-3">
-                  <Calendar size={18} className="text-x-gray" />
-                  <h3 className="text-sm text-x-gray">Total Sessions</h3>
-                </div>
-                <p className="text-3xl font-bold">{stats.totalSessions}</p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="border border-x-border rounded-2xl p-4"
-              >
-                <div className="flex items-center space-x-2 mb-3">
-                  <Clock size={18} className="text-x-gray" />
-                  <h3 className="text-sm text-x-gray">Avg Duration</h3>
-                </div>
-                <p className="text-3xl font-bold">{formatDuration(stats.avgDuration)}</p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="border border-x-border rounded-2xl p-4"
-              >
-                <div className="flex items-center space-x-2 mb-3">
-                  <TrendingUp size={18} className="text-x-gray" />
-                  <h3 className="text-sm text-x-gray">Current Streak</h3>
-                </div>
-                <p className="text-3xl font-bold">{stats.currentStreak}</p>
-                <p className="text-x-gray text-xs">days</p>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="border border-x-border rounded-2xl p-4"
-              >
-                <div className="flex items-center space-x-2 mb-3">
-                  <Award size={18} className="text-x-gray" />
-                  <h3 className="text-sm text-x-gray">Total Time</h3>
-                </div>
-                <p className="text-3xl font-bold">{formatDuration(stats.totalDuration)}</p>
-              </motion.div>
-            </div>
-
-            {/* Weekly Chart */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="border border-x-border rounded-2xl p-4"
-            >
-              <h3 className="font-bold mb-4">This Week's Activity</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={getWeeklyChartData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="day" stroke="#666" />
-                  <YAxis stroke="#666" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }}
-                    labelStyle={{ color: '#fff' }}
-                  />
-                  <Bar dataKey="sessions" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </motion.div>
-
-            {/* Quick Stats */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="border border-x-border rounded-2xl p-4"
-            >
-              <h3 className="font-bold mb-3">Recent Activity</h3>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-x-gray">This Week</span>
-                  <span className="font-semibold">{stats.thisWeekSessions} sessions</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-x-gray">This Month</span>
-                  <span className="font-semibold">{stats.thisMonthSessions} sessions</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-x-gray">Longest Streak</span>
-                  <span className="font-semibold">{stats.longestStreak} days</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-x-gray">Circles</span>
-                  <span className="font-semibold">{circles.length}/3</span>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
-        {activeTab === 'analytics' && (
-          <div className="space-y-4">
-            <div className="border border-x-border rounded-2xl p-4">
-              <h3 className="font-bold mb-4">Duration Trends</h3>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={getWeeklyChartData()}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                  <XAxis dataKey="day" stroke="#666" />
-                  <YAxis stroke="#666" />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }}
-                    labelStyle={{ color: '#fff' }}
-                  />
-                  <Line type="monotone" dataKey="duration" stroke="#8b5cf6" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="border border-x-border rounded-2xl p-4">
-              <h3 className="font-bold mb-4">Performance Insights</h3>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-x-gray text-sm">Average vs Target (30 min)</span>
-                    <span className="font-semibold">{Math.round((stats.avgDuration / 1800) * 100)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all" 
-                      style={{ width: `${Math.min((stats.avgDuration / 1800) * 100, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-x-gray text-sm">Consistency (30 days)</span>
-                    <span className="font-semibold">{Math.round((stats.currentStreak / 30) * 100)}%</span>
-                  </div>
-                  <div className="w-full bg-gray-800 rounded-full h-2">
-                    <div 
-                      className="bg-green-600 h-2 rounded-full transition-all" 
-                      style={{ width: `${Math.min((stats.currentStreak / 30) * 100, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="border border-x-border rounded-2xl p-4">
-              <h3 className="font-bold mb-3">Achievements</h3>
-              <div className="space-y-2">
-                {stats.totalSessions >= 10 && (
-                  <div className="flex items-center space-x-3 p-3 bg-x-hover rounded-xl border border-x-border">
-                    <Award className="w-6 h-6 text-blue-500" />
-                    <div>
-                      <p className="font-semibold">10 Sessions</p>
-                      <p className="text-xs text-x-gray">Getting started!</p>
-                    </div>
-                  </div>
-                )}
-                {stats.currentStreak >= 7 && (
-                  <div className="flex items-center space-x-3 p-3 bg-x-hover rounded-xl border border-x-border">
-                    <TrendingUp className="w-6 h-6 text-green-500" />
-                    <div>
-                      <p className="font-semibold">7-Day Streak</p>
-                      <p className="text-xs text-x-gray">Keep it going!</p>
-                    </div>
-                  </div>
-                )}
-                {stats.totalDuration >= 3600 && (
-                  <div className="flex items-center space-x-3 p-3 bg-x-hover rounded-xl border border-x-border">
-                    <Clock className="w-6 h-6 text-purple-500" />
-                    <div>
-                      <p className="font-semibold">1 Hour Total</p>
-                      <p className="text-xs text-x-gray">Time well spent!</p>
-                    </div>
-                  </div>
-                )}
-                {stats.totalSessions === 0 && (
-                  <p className="text-x-gray text-center py-8">Complete sessions to unlock achievements!</p>
+                  <>
+                    <h3 className="text-2xl font-bold text-white">{profile.username}</h3>
+                    <p className="text-sm text-gray-400">
+                      Member since {formatDate(profile.created_at)}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === 'history' && (
-          <div className="space-y-2">
-            {sessions.filter(s => s.end_time).length > 0 ? (
-              sessions.filter(s => s.end_time).map((session, i) => (
-                <motion.div
-                  key={session.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="border border-x-border rounded-xl p-4 hover:bg-x-hover transition-colors"
+            {/* Edit/Save Buttons */}
+            <div className="flex items-center space-x-2">
+              {editing ? (
+                <>
+                  <Button
+                    onClick={handleCancel}
+                    variant="secondary"
+                    size="sm"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    variant="primary"
+                    size="sm"
+                    disabled={saving}
+                  >
+                    <Save size={16} className="mr-2" />
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  onClick={() => setEditing(true)}
+                  variant="secondary"
+                  size="sm"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-10 w-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                        <Clock className="w-5 h-5 text-blue-500" />
+                  Edit Profile
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Avatar URL Input */}
+          {editing && (
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-400 mb-2">
+                Avatar URL (optional)
+              </label>
+              <input
+                type="url"
+                value={newAvatarUrl}
+                onChange={(e) => setNewAvatarUrl(e.target.value)}
+                className="w-full px-3 py-2 bg-black border border-gray-700 rounded-lg text-white focus:border-blue-500 focus:outline-none"
+                placeholder="https://example.com/avatar.jpg"
+              />
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <div className="mt-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+        </motion.div>
+
+        {/* XP & Level Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-bold text-white flex items-center space-x-2">
+              <Zap size={20} className="text-yellow-500" />
+              <span>Level & XP</span>
+            </h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="text-center p-4 bg-black/50 rounded-xl">
+              <div className="text-3xl font-bold text-blue-400 mb-1">
+                {userXP.current_level}
+              </div>
+              <div className="text-sm text-gray-400">Current Level</div>
+            </div>
+
+            <div className="text-center p-4 bg-black/50 rounded-xl">
+              <div className="text-3xl font-bold text-purple-400 mb-1">
+                {userXP.total_xp.toLocaleString()}
+              </div>
+              <div className="text-sm text-gray-400">Total XP</div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Stats Card */}
+        {!loading && userStats && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30"
+          >
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
+              <Activity size={20} className="text-green-500" />
+              <span>Statistics</span>
+            </h3>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="border border-gray-800 rounded-xl p-4 bg-black/50">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Clock size={16} className="text-blue-400" />
+                  <span className="text-sm text-gray-400">Total Sessions</span>
+                </div>
+                <div className="text-2xl font-bold text-white">
+                  {userStats.total_sessions || 0}
+                </div>
+              </div>
+
+              <div className="border border-gray-800 rounded-xl p-4 bg-black/50">
+                <div className="flex items-center space-x-2 mb-2">
+                  <TrendingUp size={16} className="text-purple-400" />
+                  <span className="text-sm text-gray-400">Total Time</span>
+                </div>
+                <div className="text-2xl font-bold text-white">
+                  {formatDuration(userStats.total_time || 0)}
+                </div>
+              </div>
+
+              <div className="border border-gray-800 rounded-xl p-4 bg-black/50">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Trophy size={16} className="text-yellow-400" />
+                  <span className="text-sm text-gray-400">Achievements</span>
+                </div>
+                <div className="text-2xl font-bold text-white">
+                  {userStats.achievements_unlocked || 0}
+                </div>
+              </div>
+
+              <div className="border border-gray-800 rounded-xl p-4 bg-black/50">
+                <div className="flex items-center space-x-2 mb-2">
+                  <Target size={16} className="text-green-400" />
+                  <span className="text-sm text-gray-400">Longest Session</span>
+                </div>
+                <div className="text-2xl font-bold text-white">
+                  {formatDuration(userStats.longest_session || 0)}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Recent Achievements */}
+        {recentAchievements.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30"
+          >
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
+              <Award size={20} className="text-yellow-500" />
+              <span>Recent Achievements</span>
+            </h3>
+
+            <div className="space-y-3">
+              {recentAchievements.map((achievement, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="h-10 w-10 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full flex items-center justify-center">
+                      <Trophy size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">
+                        Achievement #{achievement.achievement_id}
                       </div>
-                      <div>
-                        <p className="font-semibold">
-                          {formatDuration(session.duration_seconds || 0)}
-                        </p>
-                        <p className="text-sm text-x-gray">
-                          {formatDate(session.start_time)}
-                        </p>
+                      <div className="text-xs text-gray-400">
+                        {formatDate(achievement.unlocked_at)}
                       </div>
                     </div>
-                    {session.circle_id && (
-                      <Users className="w-4 h-4 text-x-gray" />
-                    )}
                   </div>
-                </motion.div>
-              ))
-            ) : (
-              <div className="border border-x-border rounded-2xl p-12 text-center">
-                <Calendar size={48} className="mx-auto mb-4 text-x-gray" />
-                <p className="text-x-gray">No sessions yet</p>
-                <p className="text-sm text-x-gray mt-2">Start your first session to see it here</p>
-              </div>
-            )}
-          </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
         )}
+
+        {/* Account Info */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30"
+        >
+          <h3 className="text-lg font-bold text-white mb-4 flex items-center space-x-2">
+            <Calendar size={20} className="text-blue-500" />
+            <span>Account Information</span>
+          </h3>
+
+          <div className="space-y-3">
+            <div className="flex justify-between items-center py-2 border-b border-gray-800">
+              <span className="text-gray-400">User ID</span>
+              <span className="text-white font-mono text-sm">
+                {user.id.substring(0, 8)}...
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center py-2 border-b border-gray-800">
+              <span className="text-gray-400">Email</span>
+              <span className="text-white text-sm">{user.email}</span>
+            </div>
+
+            <div className="flex justify-between items-center py-2">
+              <span className="text-gray-400">Member Since</span>
+              <span className="text-white text-sm">
+                {formatDate(profile.created_at)}
+              </span>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Logout Button (Mobile) */}
+        <Button
+          onClick={onLogout}
+          variant="danger"
+          className="w-full flex items-center justify-center space-x-2"
+        >
+          <LogOut size={20} />
+          <span>Sign Out</span>
+        </Button>
       </div>
     </div>
   );
