@@ -1,15 +1,11 @@
 // Vercel Serverless Function - Landing Page Stats
-// Gets public stats for landing page (works on school WiFi)
+// Gets public stats using direct fetch to Supabase REST API
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y'
-);
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y';
 
 export default async function handler(req, res) {
-  // CORS headers - allow from anywhere for landing page
+  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -24,27 +20,42 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Get total users count
-    const { count: usersCount } = await supabase
-      .from('profiles')
-      .select('*', { count: 'exact', head: true });
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'count=exact'
+    };
 
-    // Get total sessions count
-    const { count: sessionsCount } = await supabase
-      .from('sessions')
-      .select('*', { count: 'exact', head: true });
+    // Get users count
+    const usersResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?select=*&limit=0`,
+      { headers }
+    );
+    const usersCount = parseInt(usersResponse.headers.get('content-range')?.split('/')[1] || '0');
 
-    // Get total circles count
-    const { count: circlesCount } = await supabase
-      .from('circles')
-      .select('*', { count: 'exact', head: true });
+    // Get sessions count
+    const sessionsResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/sessions?select=*&limit=0`,
+      { headers }
+    );
+    const sessionsCount = parseInt(sessionsResponse.headers.get('content-range')?.split('/')[1] || '0');
 
-    // Get total time tracked (in hours)
-    const { data: sessionsData } = await supabase
-      .from('sessions')
-      .select('duration_seconds');
+    // Get circles count
+    const circlesResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/circles?select=*&limit=0`,
+      { headers }
+    );
+    const circlesCount = parseInt(circlesResponse.headers.get('content-range')?.split('/')[1] || '0');
+
+    // Get total time tracked
+    const sessionsDataResponse = await fetch(
+      `${SUPABASE_URL}/rest/v1/sessions?select=duration_seconds`,
+      { headers }
+    );
+    const sessionsData = await sessionsDataResponse.json();
     
-    const totalHours = sessionsData
+    const totalHours = sessionsData && Array.isArray(sessionsData)
       ? Math.floor(sessionsData.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) / 3600)
       : 0;
 

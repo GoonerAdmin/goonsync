@@ -1,12 +1,8 @@
 // Vercel Serverless Function - Authentication Proxy
-// This proxies auth requests to Supabase so it works on school WiFi
+// Uses fetch API instead of Supabase SDK to avoid import issues
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y'
-);
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y';
 
 export default async function handler(req, res) {
   // CORS headers
@@ -27,35 +23,58 @@ export default async function handler(req, res) {
   try {
     switch (action) {
       case 'login': {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: `${username}@goonsync.com`,
-          password
+        const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY
+          },
+          body: JSON.stringify({
+            email: `${username}@goonsync.com`,
+            password
+          })
         });
         
-        if (error) throw error;
-        return res.status(200).json({ data });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error_description || data.message || 'Login failed');
+        }
+        
+        return res.status(200).json({ data: { user: data.user, session: data } });
       }
 
       case 'signup': {
-        const { data, error } = await supabase.auth.signUp({
-          email: `${username}@goonsync.com`,
-          password
+        const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY
+          },
+          body: JSON.stringify({
+            email: `${username}@goonsync.com`,
+            password
+          })
         });
         
-        if (error) throw error;
-        return res.status(200).json({ data });
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error_description || data.message || 'Signup failed');
+        }
+        
+        return res.status(200).json({ data: { user: data.user, session: data } });
       }
 
       case 'signout': {
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+        // For signout, we don't need server-side action
         return res.status(200).json({ success: true });
       }
 
       case 'session': {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        return res.status(200).json({ data });
+        // Cannot get session server-side without token
+        // This would need to be handled client-side
+        return res.status(200).json({ data: { session: null } });
       }
 
       default:

@@ -1,12 +1,8 @@
 // Vercel Serverless Function - Database Proxy
-// Proxies database queries to Supabase
+// Uses fetch API to avoid dependency issues
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co',
-  process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y'
-);
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y';
 
 export default async function handler(req, res) {
   // CORS headers
@@ -25,72 +21,112 @@ export default async function handler(req, res) {
   const { table, action, data: queryData, filters, select, order } = req.body;
 
   try {
-    let query = supabase.from(table);
+    let url = `${SUPABASE_URL}/rest/v1/${table}`;
+    let method = 'GET';
+    let body = null;
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      'Prefer': 'return=representation'
+    };
 
     switch (action) {
       case 'select': {
-        query = query.select(select || '*');
+        method = 'GET';
+        headers['Prefer'] = 'count=exact';
+        
+        // Build query params
+        const params = new URLSearchParams();
+        if (select && select !== '*') params.append('select', select);
         
         // Apply filters
         if (filters) {
           Object.entries(filters).forEach(([key, value]) => {
-            query = query.eq(key, value);
+            if (key.endsWith('_in')) {
+              const actualKey = key.replace('_in', '');
+              params.append(actualKey, `in.(${value.join(',')})`);
+            } else {
+              params.append(key, `eq.${value}`);
+            }
           });
         }
-
+        
         // Apply ordering
         if (order) {
-          query = query.order(order.column, { ascending: order.ascending !== false });
+          params.append('order', `${order.column}.${order.ascending !== false ? 'asc' : 'desc'}`);
         }
-
-        const { data, error, count } = await query;
-        if (error) throw error;
-        return res.status(200).json({ data, count });
+        
+        if (params.toString()) url += '?' + params.toString();
+        break;
       }
 
       case 'insert': {
-        const { data, error } = await query.insert(queryData).select();
-        if (error) throw error;
-        return res.status(200).json({ data });
+        method = 'POST';
+        body = JSON.stringify(queryData);
+        break;
       }
 
       case 'update': {
-        query = query.update(queryData);
+        method = 'PATCH';
+        body = JSON.stringify(queryData);
         
-        // Apply filters for update
+        // Apply filters
         if (filters) {
+          const params = new URLSearchParams();
           Object.entries(filters).forEach(([key, value]) => {
-            query = query.eq(key, value);
+            params.append(key, `eq.${value}`);
           });
+          url += '?' + params.toString();
         }
-
-        const { data, error } = await query.select();
-        if (error) throw error;
-        return res.status(200).json({ data });
+        break;
       }
 
       case 'delete': {
-        // Apply filters for delete
+        method = 'DELETE';
+        
+        // Apply filters
         if (filters) {
+          const params = new URLSearchParams();
           Object.entries(filters).forEach(([key, value]) => {
-            query = query.eq(key, value);
+            params.append(key, `eq.${value}`);
           });
+          url += '?' + params.toString();
         }
-
-        const { error } = await query.delete();
-        if (error) throw error;
-        return res.status(200).json({ success: true });
+        break;
       }
 
       case 'count': {
-        const { count, error } = await query.select('*', { count: 'exact', head: true });
-        if (error) throw error;
-        return res.status(200).json({ count });
+        method = 'GET';
+        headers['Prefer'] = 'count=exact';
+        url += '?select=*&limit=0';
+        break;
       }
 
       default:
         return res.status(400).json({ error: 'Invalid action' });
     }
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body
+    });
+
+    const responseData = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(responseData.message || 'Database operation failed');
+    }
+
+    // Extract count from header if needed
+    const count = response.headers.get('content-range')?.split('/')[1];
+
+    return res.status(200).json({ 
+      data: responseData, 
+      count: count ? parseInt(count) : null 
+    });
+
   } catch (error) {
     console.error('Database error:', error);
     return res.status(400).json({ error: error.message });
