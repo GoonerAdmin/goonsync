@@ -39,7 +39,7 @@ const Dashboard = ({
       const interval = setInterval(loadDashboardData, 10000);
       return () => clearInterval(interval);
     }
-  }, [user, supabase]);
+  }, [user, supabase, sessions, isSyncing, circles]); // ← ADDED circles too!
 
   const loadDashboardData = async () => {
     if (!user || !supabase) return;
@@ -55,20 +55,36 @@ const Dashboard = ({
 
       // Calculate stats from ALL sessions
       if (allSessionsData && allSessionsData.length > 0) {
-        // Filter out sessions with null/0 duration (ongoing sessions)
-        const completedSessions = allSessionsData.filter(s => s.duration_seconds > 0);
+        // Filter out sessions with null/0 duration AND sessions under 5 seconds (incomplete)
+        const completedSessions = allSessionsData.filter(s => s.duration_seconds && s.duration_seconds >= 5);
         
-        const totalSessions = completedSessions.length;
-        const totalTime = completedSessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
-        const avgDuration = totalSessions > 0 ? Math.floor(totalTime / totalSessions) : 0;
-        const longestSession = completedSessions.length > 0 ? Math.max(...completedSessions.map(s => s.duration_seconds || 0)) : 0;
+        console.log('Total sessions found:', allSessionsData.length);
+        console.log('Completed sessions (>5s):', completedSessions.length);
+        console.log('Session durations:', completedSessions.map(s => s.duration_seconds));
+        
+        if (completedSessions.length > 0) {
+          const totalSessions = completedSessions.length;
+          const totalTime = completedSessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+          const avgDuration = Math.floor(totalTime / totalSessions);
+          const longestSession = Math.max(...completedSessions.map(s => s.duration_seconds || 0));
 
-        setUserStats({
-          totalSessions,
-          totalTime,
-          avgDuration,
-          longestSession
-        });
+          console.log('Calculated stats:', { totalSessions, totalTime, avgDuration, longestSession });
+
+          setUserStats({
+            totalSessions,
+            totalTime,
+            avgDuration,
+            longestSession
+          });
+        } else {
+          console.log('No completed sessions with duration >= 5s');
+          setUserStats({
+            totalSessions: 0,
+            totalTime: 0,
+            avgDuration: 0,
+            longestSession: 0
+          });
+        }
       } else {
         setUserStats({
           totalSessions: 0,
