@@ -5,6 +5,20 @@
 class ApiClient {
   constructor(baseURL = '') {
     this.baseURL = baseURL;
+    this.accessToken = null;
+  }
+
+  // Helper method to get headers with authorization
+  getHeaders() {
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (this.accessToken) {
+      headers['Authorization'] = `Bearer ${this.accessToken}`;
+    }
+    
+    return headers;
   }
 
   // Auth methods
@@ -18,6 +32,12 @@ class ApiClient {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
+      
+      // CRITICAL: Store access token for authenticated requests
+      if (result.data?.session?.access_token) {
+        this.accessToken = result.data.session.access_token;
+      }
+      
       return result;
     },
 
@@ -65,14 +85,15 @@ class ApiClient {
 
   // Database methods
   from(table) {
-    return new QueryBuilder(table, this.baseURL);
+    return new QueryBuilder(table, this.baseURL, this);
   }
 }
 
 class QueryBuilder {
-  constructor(table, baseURL) {
+  constructor(table, baseURL, apiClient) {
     this.table = table;
     this.baseURL = baseURL;
+    this.apiClient = apiClient;
     this.selectFields = '*';
     this.filtersList = {};
     this.orderBy = null;
@@ -133,7 +154,7 @@ class QueryBuilder {
   async delete() {
     const response = await fetch(`${this.baseURL}/api/database`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: this.apiClient.getHeaders(),
       body: JSON.stringify({
         table: this.table,
         action: 'delete',
@@ -152,7 +173,7 @@ class QueryBuilder {
       if (this.insertedData !== null) {
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.apiClient.getHeaders(),
           body: JSON.stringify({
             table: this.table,
             action: 'insert',
@@ -179,7 +200,7 @@ class QueryBuilder {
       if (this.updateData !== null && this.updateData !== undefined) {
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: this.apiClient.getHeaders(),
           body: JSON.stringify({
             table: this.table,
             action: 'update',
@@ -203,7 +224,7 @@ class QueryBuilder {
 
       const response = await fetch(`${this.baseURL}/api/database`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.apiClient.getHeaders(),
         body: JSON.stringify({
           table: this.table,
           action,
