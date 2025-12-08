@@ -45,24 +45,23 @@ const Dashboard = ({
     if (!user || !supabase) return;
 
     try {
-      // Load user's sessions
-      const { data: sessionsData, error: sessionsError } = await supabase
+      // Load ALL user's sessions for accurate stats calculation
+      const { data: allSessionsData, error: allSessionsError } = await supabase
         .from('sessions')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
+        .select('duration_seconds')
+        .eq('user_id', user.id);
 
-      if (sessionsError) throw sessionsError;
+      if (allSessionsError) throw allSessionsError;
 
-      setUserSessions(sessionsData || []);
-
-      // Calculate stats from sessions
-      if (sessionsData && sessionsData.length > 0) {
-        const totalSessions = sessionsData.length;
-        const totalTime = sessionsData.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
-        const avgDuration = Math.floor(totalTime / totalSessions);
-        const longestSession = Math.max(...sessionsData.map(s => s.duration_seconds || 0));
+      // Calculate stats from ALL sessions
+      if (allSessionsData && allSessionsData.length > 0) {
+        // Filter out sessions with null/0 duration (ongoing sessions)
+        const completedSessions = allSessionsData.filter(s => s.duration_seconds > 0);
+        
+        const totalSessions = completedSessions.length;
+        const totalTime = completedSessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
+        const avgDuration = totalSessions > 0 ? Math.floor(totalTime / totalSessions) : 0;
+        const longestSession = completedSessions.length > 0 ? Math.max(...completedSessions.map(s => s.duration_seconds || 0)) : 0;
 
         setUserStats({
           totalSessions,
@@ -79,34 +78,56 @@ const Dashboard = ({
         });
       }
 
+      // Load recent sessions for display (last 10)
+      const { data: recentSessionsData, error: recentError } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (recentError) throw recentError;
+      setUserSessions(recentSessionsData || []);
+
       // Load currently active users (in user's circles)
       if (circles && circles.length > 0) {
         const circleIds = circles.map(c => c.id);
         
+        // Query 1: Get active sync records
         const { data: activeData, error: activeError } = await supabase
           .from('active_syncs')
-          .select(`
-            user_id,
-            started_at,
-            profiles:user_id (
-              username,
-              avatar_url
-            )
-          `)
+          .select('user_id, started_at, circle_id')
           .in('circle_id', circleIds)
           .neq('user_id', user.id); // Exclude current user
 
         if (activeError) throw activeError;
 
-        // Format active members
-        const formatted = activeData?.map(a => ({
-          id: a.user_id,
-          username: a.profiles?.username || 'Unknown',
-          avatar_url: a.profiles?.avatar_url,
-          started_at: a.started_at
-        })) || [];
+        // Query 2: Get profiles for active users
+        if (activeData && activeData.length > 0) {
+          const activeUserIds = activeData.map(a => a.user_id);
+          
+          const { data: profilesData, error: profilesError } = await supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .in('id', activeUserIds);
 
-        setActiveMembers(formatted);
+          if (profilesError) throw profilesError;
+
+          // Merge active syncs with profiles
+          const formatted = activeData.map(a => {
+            const profile = profilesData?.find(p => p.id === a.user_id);
+            return {
+              id: a.user_id,
+              username: profile?.username || 'Unknown User',
+              avatar_url: profile?.avatar_url,
+              started_at: a.started_at
+            };
+          });
+
+          setActiveMembers(formatted);
+        } else {
+          setActiveMembers([]);
+        }
       } else {
         setActiveMembers([]);
       }

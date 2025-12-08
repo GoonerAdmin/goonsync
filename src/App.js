@@ -396,7 +396,8 @@ const App = () => {
         .insert([{
           user_id: user.id,
           username: profile.username,
-          circle_id: selectedCircle?.id || null
+          circle_id: selectedCircle?.id || null,
+          started_at: new Date().toISOString()
         }]);
       
       loadActiveUsers();
