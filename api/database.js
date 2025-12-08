@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { table, action, data: queryData, filters, select, order } = req.body;
+  const { table, action, data: queryData, filters, select, order, limit } = req.body;
 
   // CRITICAL: Get user's JWT token from Authorization header
   const authHeader = req.headers.authorization;
@@ -60,6 +60,11 @@ export default async function handler(req, res) {
         // Apply ordering
         if (order) {
           params.append('order', `${order.column}.${order.ascending !== false ? 'asc' : 'desc'}`);
+        }
+        
+        // Apply limit
+        if (limit) {
+          params.append('limit', limit);
         }
         
         if (params.toString()) url += '?' + params.toString();

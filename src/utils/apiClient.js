@@ -76,6 +76,7 @@ class QueryBuilder {
     this.selectFields = '*';
     this.filtersList = {};
     this.orderBy = null;
+    this.limitValue = null;
     this.isSingle = false;
     this.isCount = false;
     this.isHead = false;
@@ -102,6 +103,11 @@ class QueryBuilder {
 
   order(column, options = {}) {
     this.orderBy = { column, ascending: options.ascending !== false };
+    return this;
+  }
+
+  limit(count) {
+    this.limitValue = count;
     return this;
   }
 
@@ -203,7 +209,8 @@ class QueryBuilder {
           action,
           select: this.selectFields,
           filters: this.filtersList,
-          order: this.orderBy
+          order: this.orderBy,
+          limit: this.limitValue
         })
       });
 
