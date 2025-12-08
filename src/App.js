@@ -508,6 +508,14 @@ const App = () => {
   // Create a new circle
   const handleCreateCircle = async (name) => {
     try {
+      // CHECK: User can only create/join 3 circles max
+      if (circles.length >= 3) {
+        return {
+          success: false,
+          error: 'You can only be in 3 circles maximum. Leave a circle to create a new one.'
+        };
+      }
+
       const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
       
       // Create circle
@@ -556,6 +564,14 @@ const App = () => {
   // Join a circle with invite code
   const handleJoinCircle = async (code) => {
     try {
+      // CHECK: User can only create/join 3 circles max
+      if (circles.length >= 3) {
+        return {
+          success: false,
+          error: 'You can only be in 3 circles maximum. Leave a circle to join a new one.'
+        };
+      }
+
       // Find circle by invite code
       const { data: circle, error: findError } = await apiClient
         .from('circles')
@@ -765,6 +781,7 @@ const App = () => {
               sessions={sessions}
               activeUsers={activeUsers}
               analytics={analytics}
+              supabase={apiClient}
             >
               <div className="p-4">
                 <XPBar 
@@ -863,16 +880,17 @@ const App = () => {
           )}
 
           {/* CIRCLES VIEW */}
-          <CirclesView
-			  user={user}
-			  profile={profile}
-			  circles={circles}
-			  onCreateCircle={handleCreateCircle}
-			  onJoinCircle={handleJoinCircle}
-			  leaderboard={leaderboard}
-			  onLoadLeaderboard={loadLeaderboard}
-			  supabase={apiClient}  // ← ADD THIS LINE!
-			/>
+          {view === 'circles' && (
+            <CirclesView
+              user={user}
+              profile={profile}
+              circles={circles}
+              onCreateCircle={handleCreateCircle}
+              onJoinCircle={handleJoinCircle}
+              leaderboard={leaderboard}
+              onLoadLeaderboard={loadLeaderboard}
+              supabase={apiClient}
+            />
           )}
 
           {/* ACHIEVEMENTS VIEW */}
