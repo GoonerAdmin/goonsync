@@ -484,10 +484,6 @@ const App = () => {
         console.error('Background sync processing error:', error);
       }
     })();
-  }; 
-      setElapsedTime(0); 
-      setCurrentSessionId(null);
-    }
   };
 
   // ============================================================================
