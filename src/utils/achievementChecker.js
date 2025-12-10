@@ -94,16 +94,26 @@ export class AchievementChecker {
       const newLevel = levelObj.level;  // Extract just the number
       const oldLevel = currentData?.current_level || 1;
 
-      // Update XP and level
-      await this.supabase
-        .from('user_xp')
-        .upsert({
-          user_id: userId,
-          total_xp: newTotalXP,
-          current_level: newLevel  // Now it's just a number!
-        }, {
-          onConflict: 'user_id'  // ← Tell it which column to check!
-        });
+      // Update XP and level - check if row exists first
+      if (currentData) {
+        // Row exists - UPDATE it
+        await this.supabase
+          .from('user_xp')
+          .update({
+            total_xp: newTotalXP,
+            current_level: newLevel
+          })
+          .eq('user_id', userId);
+      } else {
+        // Row doesn't exist - INSERT it
+        await this.supabase
+          .from('user_xp')
+          .insert({
+            user_id: userId,
+            total_xp: newTotalXP,
+            current_level: newLevel
+          });
+      }
 
       // Log level up
       if (newLevel > oldLevel) {
