@@ -96,13 +96,15 @@ export default async function handler(req, res) {
         method = 'POST';
         body = JSON.stringify(queryData);
         
-        // Upsert uses Prefer header
-        headers['Prefer'] = 'resolution=merge-duplicates';
-        
-        // If onConflict specified, add to Prefer header
+        // Supabase upsert configuration
         const options = req.body.options || {};
+        
         if (options.onConflict) {
-          headers['Prefer'] += `,on_conflict=${options.onConflict}`;
+          // Use merge-duplicates with specific conflict columns
+          headers['Prefer'] = `resolution=merge-duplicates,on-conflict=${options.onConflict}`;
+        } else {
+          // Default: use primary key
+          headers['Prefer'] = 'resolution=merge-duplicates';
         }
         
         break;
