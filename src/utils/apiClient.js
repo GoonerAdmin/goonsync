@@ -16,9 +16,6 @@ class ApiClient {
     
     if (this.accessToken) {
       headers['Authorization'] = `Bearer ${this.accessToken}`;
-      console.log('🔑 Auth token present:', this.accessToken.substring(0, 20) + '...');
-    } else {
-      console.warn('⚠️ NO AUTH TOKEN!');
     }
     
     return headers;
@@ -177,13 +174,6 @@ class QueryBuilder {
     try {
       // If we have inserted data, this is an insert query
       if (this.insertedData !== null) {
-        console.log('🔵 INSERT REQUEST:', {
-          table: this.table,
-          action: 'insert',
-          data: this.insertedData,
-          hasAuth: !!this.apiClient.accessToken
-        });
-        
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
           headers: this.apiClient.getHeaders(),
@@ -195,7 +185,6 @@ class QueryBuilder {
         });
 
         const result = await response.json();
-        console.log('🔵 INSERT RESPONSE:', response.status, result);
         
         if (!response.ok) {
           return resolve({ data: null, error: new Error(result.error) });
@@ -234,14 +223,6 @@ class QueryBuilder {
 
       // If we have upsert data, this is an upsert query
       if (this.upsertData !== null && this.upsertData !== undefined) {
-        console.log('🟢 UPSERT REQUEST:', {
-          table: this.table,
-          action: 'upsert',
-          data: this.upsertData,
-          options: this.upsertOptions,
-          hasAuth: !!this.apiClient.accessToken
-        });
-        
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
           headers: this.apiClient.getHeaders(),
@@ -254,7 +235,6 @@ class QueryBuilder {
         });
 
         const result = await response.json();
-        console.log('🟢 UPSERT RESPONSE:', response.status, result);
         
         if (!response.ok) {
           return resolve({ data: null, error: new Error(result.error) });
@@ -271,13 +251,6 @@ class QueryBuilder {
 
       // If this is a delete operation
       if (this.isDelete) {
-        console.log('🔴 DELETE REQUEST:', {
-          table: this.table,
-          action: 'delete',
-          filters: this.filtersList,
-          hasAuth: !!this.apiClient.accessToken
-        });
-        
         const response = await fetch(`${this.baseURL}/api/database`, {
           method: 'POST',
           headers: this.apiClient.getHeaders(),
@@ -289,7 +262,6 @@ class QueryBuilder {
         });
 
         const result = await response.json();
-        console.log('🔴 DELETE RESPONSE:', response.status, result);
         
         if (!response.ok) {
           return resolve({ data: null, error: new Error(result.error) });

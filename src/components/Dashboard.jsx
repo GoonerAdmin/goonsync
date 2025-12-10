@@ -96,17 +96,11 @@ const Dashboard = ({
         // Filter out sessions with null/0 duration AND sessions under 5 seconds (incomplete)
         const completedSessions = allSessionsData.filter(s => s.duration_seconds && s.duration_seconds >= 5);
         
-        console.log('Total sessions found:', allSessionsData.length);
-        console.log('Completed sessions (>5s):', completedSessions.length);
-        console.log('Session durations:', completedSessions.map(s => s.duration_seconds));
-        
         if (completedSessions.length > 0) {
           const totalSessions = completedSessions.length;
           const totalTime = completedSessions.reduce((sum, s) => sum + (s.duration_seconds || 0), 0);
           const avgDuration = Math.floor(totalTime / totalSessions);
           const longestSession = Math.max(...completedSessions.map(s => s.duration_seconds || 0));
-
-          console.log('Calculated stats:', { totalSessions, totalTime, avgDuration, longestSession });
 
           setUserStats({
             totalSessions,
@@ -115,7 +109,6 @@ const Dashboard = ({
             longestSession
           });
         } else {
-          console.log('No completed sessions with duration >= 5s');
           setUserStats({
             totalSessions: 0,
             totalTime: 0,

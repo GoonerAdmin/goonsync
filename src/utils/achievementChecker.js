@@ -30,8 +30,8 @@ export class AchievementChecker {
         // Skip if already unlocked
         if (unlockedIds.has(achievement.id)) continue;
         
-        // Check if conditions are met
-        if (achievement.checkUnlock(stats)) {
+        // Check if conditions are met using the condition function
+        if (achievement.condition && achievement.condition(stats)) {
           newAchievements.push(achievement);
         }
       }
