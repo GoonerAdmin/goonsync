@@ -111,7 +111,7 @@ const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
   };
 
   const leaveCircle = async (circleId, circleName) => {
-    if (!confirm(`Are you sure you want to leave "${circleName}"?`)) return;
+    if (!window.confirm(`Are you sure you want to leave "${circleName}"?`)) return;
 
     try {
       const { error } = await supabase
