@@ -115,7 +115,7 @@ const CirclesView = ({
 
       if (error) throw error;
 
-      onCirclesUpdate();
+      // Circles will reload on next navigation or page refresh
       setError(`Left "${circleName}"`);
       setTimeout(() => setError(''), 3000);
     } catch (error) {
