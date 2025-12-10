@@ -92,6 +92,22 @@ export default async function handler(req, res) {
         break;
       }
 
+      case 'upsert': {
+        method = 'POST';
+        body = JSON.stringify(queryData);
+        
+        // Upsert uses Prefer header
+        headers['Prefer'] = 'resolution=merge-duplicates';
+        
+        // If onConflict specified, add to Prefer header
+        const options = req.body.options || {};
+        if (options.onConflict) {
+          headers['Prefer'] += `,on_conflict=${options.onConflict}`;
+        }
+        
+        break;
+      }
+
       case 'delete': {
         method = 'DELETE';
         
