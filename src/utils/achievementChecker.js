@@ -90,7 +90,8 @@ export class AchievementChecker {
         .single();
 
       const newTotalXP = (currentData?.total_xp || 0) + xpAmount;
-      const newLevel = getLevelFromXP(newTotalXP);
+      const levelObj = getLevelFromXP(newTotalXP);
+      const newLevel = levelObj.level;  // Extract just the number
       const oldLevel = currentData?.current_level || 1;
 
       // Update XP and level
@@ -99,7 +100,7 @@ export class AchievementChecker {
         .upsert({
           user_id: userId,
           total_xp: newTotalXP,
-          current_level: newLevel
+          current_level: newLevel  // Now it's just a number!
         });
 
       // Log level up
