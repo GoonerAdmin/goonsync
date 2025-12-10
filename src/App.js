@@ -409,75 +409,82 @@ const App = () => {
   // Stop sync session and process achievements
   const stopSync = async () => {
     const duration = elapsedTime;
+    const sessionId = currentSessionId;
     
-    try {
-      if (currentSessionId) {
-        // Update session with end time and duration
+    // IMMEDIATELY update UI - don't make user wait!
+    setIsSyncing(false); 
+    setSyncStartTime(null); 
+    setElapsedTime(0); 
+    setCurrentSessionId(null);
+    
+    // Do all the database work in the background
+    (async () => {
+      try {
+        if (sessionId) {
+          // Update session with end time and duration
+          await apiClient
+            .from('sessions')
+            .update({ 
+              end_time: new Date().toISOString(), 
+              duration_seconds: duration 
+            })
+            .eq('id', sessionId);
+          
+          // Calculate and award session XP
+          const sessionXP = achievementChecker.calculateSessionXP(duration);
+          await achievementChecker.awardXP(user.id, sessionXP);
+          
+          // Get completed session data
+          const { data: completedSession } = await apiClient
+            .from('sessions')
+            .select('*')
+            .eq('id', sessionId)
+            .single();
+          
+          // Update user stats
+          if (completedSession) {
+            await achievementChecker.updateStatsAfterSession(user.id, completedSession);
+          }
+          
+          // Check for new achievements
+          try {
+            const { newAchievements: unlockedAchievements } = await achievementChecker.checkAndAwardAchievements(user.id);
+            
+            // Show achievement notifications
+            if (unlockedAchievements && unlockedAchievements.length > 0) {
+              setNewAchievements(unlockedAchievements);
+              setTimeout(() => setNewAchievements([]), 5000);
+            }
+          } catch (error) {
+            console.log('Achievement check skipped:', error.message);
+          }
+          
+          // Check for level up
+          const updatedXP = await achievementChecker.getUserXP(user.id);
+          if (updatedXP.current_level > userXP.current_level) {
+            setShowLevelUp({ 
+              oldLevel: userXP.current_level, 
+              newLevel: updatedXP.current_level 
+            });
+            setTimeout(() => setShowLevelUp(null), 4000);
+          }
+          setUserXP(updatedXP);
+        }
+        
+        // Remove from active syncs
         await apiClient
-          .from('sessions')
-          .update({ 
-            end_time: new Date().toISOString(), 
-            duration_seconds: duration 
-          })
-          .eq('id', currentSessionId);
+          .from('active_syncs')
+          .delete()
+          .eq('user_id', user.id);
         
-        // Calculate and award session XP
-        const sessionXP = achievementChecker.calculateSessionXP(duration);
-        await achievementChecker.awardXP(user.id, sessionXP);
-        
-        // Get completed session data
-        const { data: completedSession } = await apiClient
-          .from('sessions')
-          .select('*')
-          .eq('id', currentSessionId)
-          .single();
-        
-        // Update user stats
-        if (completedSession) {
-          await achievementChecker.updateStatsAfterSession(user.id, completedSession);
-        }
-        
-        // Check for new achievements
-        const { newAchievements: unlockedAchievements } = await achievementChecker.checkAndAwardAchievements(user.id);
-        
-        // Show achievement notifications
-        if (unlockedAchievements && unlockedAchievements.length > 0) {
-          setNewAchievements(unlockedAchievements);
-          setTimeout(() => setNewAchievements([]), 5000);
-        }
-        
-        // Check for level up
-        const updatedXP = await achievementChecker.getUserXP(user.id);
-        if (updatedXP.current_level > userXP.current_level) {
-          setShowLevelUp({ 
-            oldLevel: userXP.current_level, 
-            newLevel: updatedXP.current_level 
-          });
-          setTimeout(() => setShowLevelUp(null), 4000);
-        }
-        setUserXP(updatedXP);
+        // Reload data
+        loadSessions(); 
+        loadActiveUsers();
+      } catch (error) {
+        console.error('Background sync processing error:', error);
       }
-      
-      // Remove from active syncs
-      await apiClient
-        .from('active_syncs')
-        .delete()
-        .eq('user_id', user.id);
-      
-      // Reset state
-      setIsSyncing(false); 
-      setSyncStartTime(null); 
-      setElapsedTime(0); 
-      setCurrentSessionId(null);
-      
-      // Reload data
-      loadSessions(); 
-      loadActiveUsers();
-    } catch (error) {
-      console.error('Stop sync error:', error);
-      // Reset state even if there's an error
-      setIsSyncing(false); 
-      setSyncStartTime(null); 
+    })();
+  }; 
       setElapsedTime(0); 
       setCurrentSessionId(null);
     }
