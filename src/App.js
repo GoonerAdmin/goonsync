@@ -519,7 +519,7 @@ const App = () => {
         };
       }
 
-      const inviteCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+      const inviteCode = Math.floor(100000 + Math.random() * 900000).toString();
       
       // Create circle
       const { data: circleData, error: circleError } = await apiClient

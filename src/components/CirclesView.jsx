@@ -1,163 +1,117 @@
 import React, { useState, useEffect } from 'react';
+import { Users, Crown, Link2, Plus, X, TrendingUp, Clock, Award, UserMinus, Eye, BarChart3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Users, Plus, Search, TrendingUp, Clock, Trophy, 
-  X as CloseIcon, UserPlus, ChevronRight, Award, LogOut
-} from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import Button from './Button';
 
-const CirclesView = ({ 
-  user, 
-  profile, 
-  circles, 
-  onCreateCircle, 
-  onJoinCircle,
-  leaderboard,
-  onLoadLeaderboard,
-  supabase  // ← CRITICAL: Receives API client
-}) => {
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showJoinModal, setShowJoinModal] = useState(false);
-  const [showDetailsModal, setShowDetailsModal] = useState(false);
+const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
+  const [newCircleName, setNewCircleName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
   const [selectedCircle, setSelectedCircle] = useState(null);
-  const [circleName, setCircleName] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
-  const [searchCode, setSearchCode] = useState('');
-  const [creating, setCreating] = useState(false);
-  const [joining, setJoining] = useState(false);
-  const [error, setError] = useState('');
-  
-  // Circle details state
   const [circleMembers, setCircleMembers] = useState([]);
-  const [circleStats, setCircleStats] = useState(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [circleAnalytics, setCircleAnalytics] = useState(null);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [loadingMembers, setLoadingMembers] = useState(false);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
 
-  const handleCreateSubmit = async (e) => {
-    e.preventDefault();
-    if (!circleName.trim()) return;
-
-    setCreating(true);
-    setError('');
-
-    try {
-      await onCreateCircle(circleName.trim());
-      setCircleName('');
-      setShowCreateModal(false);
-    } catch (err) {
-      setError(err.message || 'Failed to create circle');
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleJoinSubmit = async (e) => {
-    e.preventDefault();
-    if (!searchCode.trim()) return;
-
-    setJoining(true);
-    setError('');
-
-    try {
-      await onJoinCircle(searchCode.trim());
-      setSearchCode('');
-      setShowJoinModal(false);
-    } catch (err) {
-      setError(err.message || 'Failed to join circle');
-    } finally {
-      setJoining(false);
-    }
-  };
-
-  const openCircleDetails = async (circle) => {
-    setSelectedCircle(circle);
-    setShowDetailsModal(true);
-    setCircleMembers([]);
-    setCircleStats(null);
+  const createCircle = async () => {
+    if (!newCircleName.trim()) return;
+    const inviteCode = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Load circle members and stats
-    await loadCircleDetails(circle.id);
-  };
-
-  const loadCircleDetails = async (circleId) => {
-    if (!supabase) {
-      console.error('Supabase client not provided to CirclesView');
-      return;
-    }
-
-    setLoadingDetails(true);
-
     try {
-      // Load members (just user_ids first)
-      const { data: members, error: membersError } = await supabase
-        .from('circle_members')
-        .select('user_id, joined_at')
-        .eq('circle_id', circleId);
+      const { data: circleData, error } = await supabase
+        .from('circles')
+        .insert([{ name: newCircleName, invite_code: inviteCode, created_by: user.id }])
+        .select()
+        .single();
 
-      if (membersError) throw membersError;
+      if (error) throw error;
 
-      // Load profiles for these users (separate query)
-      if (members && members.length > 0) {
-        const userIds = members.map(m => m.user_id);
+      if (circleData) {
+        await supabase.from('circle_members').insert([{ 
+          circle_id: circleData.id, 
+          user_id: user.id, 
+          username: profile.username 
+        }]);
         
-        const { data: profiles, error: profilesError } = await supabase
-          .from('profiles')
-          .select('id, username, avatar_url')
-          .in('id', userIds);
-
-        if (profilesError) throw profilesError;
-
-        // Merge members with their profiles
-        const formattedMembers = members.map(m => {
-          const profile = profiles?.find(p => p.id === m.user_id);
-          return {
-            id: m.user_id,
-            username: profile?.username || 'Unknown User',
-            avatar_url: profile?.avatar_url,
-            joined_at: m.joined_at
-          };
-        });
-
-        setCircleMembers(formattedMembers);
-      } else {
-        setCircleMembers([]);
+        setNewCircleName('');
+        onCirclesUpdate();
+        setError(`Circle created! Invite code: ${inviteCode}`);
+        setTimeout(() => setError(''), 5000);
       }
-
-      // Load circle stats
-      const { data: sessions, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('user_id, duration_seconds')
-        .eq('circle_id', circleId);
-
-      if (sessionsError) throw sessionsError;
-
-      // Calculate stats
-      const totalSessions = sessions?.length || 0;
-      const totalTime = sessions?.reduce((sum, s) => sum + (s.duration_seconds || 0), 0) || 0;
-      const avgTime = totalSessions > 0 ? Math.floor(totalTime / totalSessions) : 0;
-
-      setCircleStats({
-        totalSessions,
-        totalTime,
-        avgTime,
-        memberCount: members?.length || 0
-      });
-
-      // CRITICAL: Load leaderboard automatically!
-      if (onLoadLeaderboard) {
-        await onLoadLeaderboard(circleId);
-      }
-
     } catch (error) {
-      console.error('Error loading circle details:', error);
-      setError('Failed to load circle details');
-    } finally {
-      setLoadingDetails(false);
+      console.error('Error creating circle:', error);
+      setError('Failed to create circle');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
-  const handleLeaveCircle = async (circleId) => {
-    if (!supabase) return;
-    if (!window.confirm('Are you sure you want to leave this circle?')) return;
+  const joinCircle = async () => {
+    if (!joinCode.trim()) return;
+    
+    try {
+      const { data: circleData, error: circleError } = await supabase
+        .from('circles')
+        .select('*')
+        .eq('invite_code', joinCode.toUpperCase())
+        .single();
+
+      if (circleError || !circleData) {
+        setError('Invalid invite code!');
+        setTimeout(() => setError(''), 3000);
+        return;
+      }
+
+      const { data: members } = await supabase
+        .from('circle_members')
+        .select('*')
+        .eq('circle_id', circleData.id);
+
+      if (members && members.length >= 6) {
+        setError('Circle is full (max 6 members)');
+        setTimeout(() => setError(''), 3000);
+        return;
+      }
+
+      const { data: existing } = await supabase
+        .from('circle_members')
+        .select('*')
+        .eq('circle_id', circleData.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (existing) {
+        setError('You\'re already in this circle!');
+        setTimeout(() => setError(''), 3000);
+        return;
+      }
+
+      if (circles.length >= 3) {
+        setError('Maximum 3 circles on free tier');
+        setTimeout(() => setError(''), 3000);
+        return;
+      }
+
+      await supabase.from('circle_members').insert([{ 
+        circle_id: circleData.id, 
+        user_id: user.id, 
+        username: profile.username 
+      }]);
+
+      setJoinCode('');
+      onCirclesUpdate();
+      setError(`Joined ${circleData.name}!`);
+      setTimeout(() => setError(''), 3000);
+    } catch (error) {
+      console.error('Error joining circle:', error);
+      setError('Failed to join circle');
+      setTimeout(() => setError(''), 3000);
+    }
+  };
+
+  const leaveCircle = async (circleId, circleName) => {
+    if (!confirm(`Are you sure you want to leave "${circleName}"?`)) return;
 
     try {
       const { error } = await supabase
@@ -168,415 +122,423 @@ const CirclesView = ({
 
       if (error) throw error;
 
-      setShowDetailsModal(false);
-      setSelectedCircle(null);
-      
-      // Refresh circles list
-      window.location.reload(); // Simple refresh - better would be to call a refresh function
-
+      onCirclesUpdate();
+      setError(`Left ${circleName}`);
+      setTimeout(() => setError(''), 3000);
     } catch (error) {
       console.error('Error leaving circle:', error);
       setError('Failed to leave circle');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
-  const formatTime = (seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const loadCircleMembers = async (circleId) => {
+    setLoadingMembers(true);
+    try {
+      const { data, error } = await supabase
+        .from('circle_members')
+        .select('user_id, username, joined_at')
+        .eq('circle_id', circleId)
+        .order('joined_at', { ascending: true });
+
+      if (error) throw error;
+      setCircleMembers(data || []);
+    } catch (error) {
+      console.error('Error loading members:', error);
+      setCircleMembers([]);
+    } finally {
+      setLoadingMembers(false);
+    }
   };
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
+  const loadCircleAnalytics = async (circleId) => {
+    setLoadingAnalytics(true);
+    try {
+      // Get all sessions for this circle
+      const { data: sessions, error } = await supabase
+        .from('sessions')
+        .select('*')
+        .eq('circle_id', circleId)
+        .not('duration_seconds', 'is', null);
+
+      if (error) throw error;
+
+      if (!sessions || sessions.length === 0) {
+        setCircleAnalytics({
+          totalSessions: 0,
+          totalTime: 0,
+          avgDuration: 0,
+          activeMembers: 0,
+          topPerformer: null
+        });
+        return;
+      }
+
+      // Calculate stats
+      const totalSessions = sessions.length;
+      const totalTime = sessions.reduce((sum, s) => sum + s.duration_seconds, 0);
+      const avgDuration = Math.floor(totalTime / totalSessions);
+
+      // Get unique active members
+      const activeMembers = new Set(sessions.map(s => s.user_id)).size;
+
+      // Calculate top performer
+      const userStats = {};
+      sessions.forEach(s => {
+        if (!userStats[s.user_id]) {
+          userStats[s.user_id] = { 
+            username: s.username, 
+            totalTime: 0, 
+            sessions: 0 
+          };
+        }
+        userStats[s.user_id].totalTime += s.duration_seconds;
+        userStats[s.user_id].sessions += 1;
+      });
+
+      const topPerformer = Object.values(userStats).sort((a, b) => b.totalTime - a.totalTime)[0];
+
+      setCircleAnalytics({
+        totalSessions,
+        totalTime,
+        avgDuration,
+        activeMembers,
+        topPerformer
+      });
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+      setCircleAnalytics(null);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
+
+  const handleViewMembers = (circle) => {
+    setSelectedCircle(circle);
+    loadCircleMembers(circle.id);
+    setShowMembersModal(true);
+  };
+
+  const handleViewAnalytics = (circle) => {
+    setSelectedCircle(circle);
+    loadCircleAnalytics(circle.id);
+    setShowAnalyticsModal(true);
   };
 
   return (
-    <div className="min-h-screen pb-20 bg-black">
-      {/* Header */}
-      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-gray-800 z-10 px-4 py-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold flex items-center space-x-2 text-white">
-            <Users size={24} className="text-purple-500" />
-            <span>Circles</span>
-          </h2>
-          <div className="flex items-center space-x-2">
-            <Button
-              onClick={() => setShowJoinModal(true)}
-              variant="secondary"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
-              <Search size={16} />
-              <span className="hidden sm:inline">Join</span>
-            </Button>
-            <Button
-              onClick={() => setShowCreateModal(true)}
-              variant="primary"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
-              <Plus size={16} />
-              <span className="hidden sm:inline">Create</span>
-            </Button>
-          </div>
+    <div className="min-h-screen">
+      <div className="sticky top-0 bg-black/90 backdrop-blur-md border-b border-x-border z-10">
+        <div className="px-4 py-4">
+          <h2 className="text-xl font-bold">Circles</h2>
+          <p className="text-x-gray text-sm">
+            {circles.length}/3 circles • Max 6 members each
+          </p>
         </div>
       </div>
 
-      {/* Circles List */}
       <div className="p-4 space-y-4">
-        {circles.length === 0 ? (
-          <div className="border border-gray-800 rounded-2xl p-12 text-center">
-            <Users size={48} className="mx-auto mb-4 text-gray-600" />
-            <p className="text-gray-400 mb-4">You're not in any circles yet</p>
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
-              <Button
-                onClick={() => setShowCreateModal(true)}
-                variant="primary"
+        {/* Current Circles */}
+        {circles.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-x-gray uppercase tracking-wider px-2">Your Circles</h3>
+            {circles.map(circle => (
+              <motion.div
+                key={circle.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="border border-x-border rounded-2xl p-5 hover:bg-x-hover transition-colors group"
               >
-                <Plus size={16} className="mr-2" />
-                Create Circle
-              </Button>
-              <Button
-                onClick={() => setShowJoinModal(true)}
-                variant="secondary"
-              >
-                <Search size={16} className="mr-2" />
-                Join Circle
-              </Button>
-            </div>
-          </div>
-        ) : (
-          circles.map((circle) => (
-            <motion.div
-              key={circle.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="border border-gray-800 rounded-2xl p-5 bg-gray-900/30 hover:bg-gray-900/50 transition cursor-pointer"
-              onClick={() => openCircleDetails(circle)}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
                       <Users size={24} className="text-white" />
                     </div>
                     <div>
-                      <h3 className="text-lg font-bold text-white">{circle.name}</h3>
-                      <p className="text-sm text-gray-400">
-                        Code: {circle.invite_code}
+                      <div className="flex items-center space-x-2">
+                        <h3 className="text-lg font-bold">{circle.name}</h3>
+                        {circle.created_by === user.id && (
+                          <div className="px-2 py-0.5 bg-yellow-500/10 border border-yellow-500/20 rounded text-yellow-500 text-xs font-semibold">
+                            Owner
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-x-gray text-sm">
+                        Created {new Date(circle.created_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
                 </div>
-                <ChevronRight size={20} className="text-gray-500" />
-              </div>
-            </motion.div>
-          ))
+                
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2 text-sm">
+                    <span className="text-x-gray">Code:</span>
+                    <code className="px-3 py-1 bg-black border border-x-border rounded-lg font-mono font-semibold">
+                      {circle.invite_code}
+                    </code>
+                  </div>
+                  <button 
+                    onClick={() => { 
+                      navigator.clipboard.writeText(circle.invite_code); 
+                      setError('Invite code copied!');
+                      setTimeout(() => setError(''), 2000);
+                    }} 
+                    className="flex items-center space-x-1 px-3 py-1.5 text-sm text-x-gray hover:text-x-blue border border-x-border rounded-lg hover:border-x-blue transition"
+                  >
+                    <Link2 size={14} />
+                    <span>Copy</span>
+                  </button>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => handleViewMembers(circle)}
+                    className="flex items-center justify-center space-x-1 px-3 py-2 border border-x-border rounded-lg hover:bg-x-hover transition text-sm"
+                  >
+                    <Eye size={14} />
+                    <span>Members</span>
+                  </button>
+                  <button
+                    onClick={() => handleViewAnalytics(circle)}
+                    className="flex items-center justify-center space-x-1 px-3 py-2 border border-x-border rounded-lg hover:bg-x-hover transition text-sm"
+                  >
+                    <BarChart3 size={14} />
+                    <span>Analytics</span>
+                  </button>
+                  <button
+                    onClick={() => leaveCircle(circle.id, circle.name)}
+                    className="flex items-center justify-center space-x-1 px-3 py-2 border border-red-500/20 text-red-500 rounded-lg hover:bg-red-500/10 transition text-sm"
+                  >
+                    <UserMinus size={14} />
+                    <span>Leave</span>
+                  </button>
+                </div>
+              </motion.div>
+            ))}
+          </div>
         )}
+
+        {/* Empty State */}
+        {circles.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="border border-x-border rounded-2xl p-12 text-center"
+          >
+            <div className="h-20 w-20 bg-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Users size={36} className="text-gray-600" />
+            </div>
+            <h3 className="text-xl font-bold mb-2">No circles yet</h3>
+            <p className="text-x-gray mb-6">Create your first circle or join one with an invite code</p>
+          </motion.div>
+        )}
+
+        {/* Create Circle */}
+        <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+          <div className="flex items-center space-x-2 mb-4">
+            <Plus size={20} className="text-x-blue" />
+            <h3 className="font-bold text-lg">Create New Circle</h3>
+          </div>
+          <input 
+            type="text" 
+            placeholder="Enter circle name..." 
+            value={newCircleName} 
+            onChange={(e) => setNewCircleName(e.target.value)} 
+            className="w-full px-4 py-3 bg-black border border-x-border rounded-xl focus:outline-none focus:border-x-blue mb-3 transition placeholder:text-gray-600" 
+          />
+          <Button 
+            onClick={createCircle} 
+            disabled={circles.length >= 3 || !newCircleName.trim()}
+            variant="primary"
+            className="w-full"
+            icon={Plus}
+          >
+            {circles.length >= 3 ? 'Max Circles Reached' : 'Create Circle'}
+          </Button>
+          {circles.length >= 3 && (
+            <p className="text-yellow-500 text-sm mt-3 text-center">
+              Free tier: 3 circles maximum
+            </p>
+          )}
+        </div>
+
+        {/* Join Circle */}
+        <div className="border border-x-border rounded-2xl p-5 bg-gray-900/30">
+          <div className="flex items-center space-x-2 mb-4">
+            <Link2 size={20} className="text-x-blue" />
+            <h3 className="font-bold text-lg">Join Circle</h3>
+          </div>
+          <input 
+            type="text" 
+            placeholder="Enter invite code..." 
+            value={joinCode} 
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase())} 
+            className="w-full px-4 py-3 bg-black border border-x-border rounded-xl focus:outline-none focus:border-x-blue mb-3 transition font-mono uppercase placeholder:text-gray-600" 
+          />
+          <Button 
+            onClick={joinCircle} 
+            disabled={circles.length >= 3 || !joinCode.trim()}
+            variant="secondary"
+            className="w-full"
+          >
+            {circles.length >= 3 ? 'Max Circles Reached' : 'Join Circle'}
+          </Button>
+        </div>
       </div>
 
-      {/* Create Circle Modal */}
+      {/* Members Modal */}
       <AnimatePresence>
-        {showCreateModal && (
+        {showMembersModal && selectedCircle && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowCreateModal(false)}
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowMembersModal(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-800 max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
-              className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md"
             >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-white">Create Circle</h3>
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="text-gray-400 hover:text-white transition"
-                >
-                  <CloseIcon size={24} />
-                </button>
-              </div>
-
-              <form onSubmit={handleCreateSubmit} className="space-y-4">
+              <div className="flex justify-between items-center mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Circle Name
-                  </label>
-                  <input
-                    type="text"
-                    value={circleName}
-                    onChange={(e) => setCircleName(e.target.value)}
-                    className="w-full px-4 py-3 bg-black border border-gray-800 rounded-xl text-white focus:border-purple-500 focus:outline-none transition"
-                    placeholder="Enter circle name"
-                    maxLength={50}
-                    required
-                  />
-                </div>
-
-                {error && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg">
-                    <p className="text-red-400 text-sm">{error}</p>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full"
-                  disabled={creating}
-                >
-                  {creating ? 'Creating...' : 'Create Circle'}
-                </Button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Join Circle Modal */}
-      <AnimatePresence>
-        {showJoinModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setShowJoinModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-md"
-            >
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold text-white">Join Circle</h3>
-                <button
-                  onClick={() => setShowJoinModal(false)}
-                  className="text-gray-400 hover:text-white transition"
-                >
-                  <CloseIcon size={24} />
-                </button>
-              </div>
-
-              <form onSubmit={handleJoinSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Invite Code
-                  </label>
-                  <input
-                    type="text"
-                    value={searchCode}
-                    onChange={(e) => setSearchCode(e.target.value.toUpperCase())}
-                    className="w-full px-4 py-3 bg-black border border-gray-800 rounded-xl text-white font-mono focus:border-purple-500 focus:outline-none transition uppercase"
-                    placeholder="ABC123"
-                    maxLength={6}
-                    required
-                  />
-                </div>
-
-                {error && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg">
-                    <p className="text-red-400 text-sm">{error}</p>
-                  </div>
-                )}
-
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className="w-full"
-                  disabled={joining}
-                >
-                  {joining ? 'Joining...' : 'Join Circle'}
-                </Button>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Circle Details Modal */}
-      <AnimatePresence>
-        {showDetailsModal && selectedCircle && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
-            onClick={() => setShowDetailsModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-gray-900 border border-gray-800 rounded-2xl p-6 w-full max-w-2xl my-8"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-1">
-                    {selectedCircle.name}
-                  </h3>
-                  <p className="text-sm text-gray-400">
-                    Code: <span className="font-mono">{selectedCircle.invite_code}</span>
+                  <h3 className="text-xl font-bold">{selectedCircle.name}</h3>
+                  <p className="text-sm text-x-gray">
+                    {circleMembers.length} {circleMembers.length === 1 ? 'member' : 'members'}
                   </p>
                 </div>
-                <button
-                  onClick={() => setShowDetailsModal(false)}
-                  className="text-gray-400 hover:text-white transition"
-                >
-                  <CloseIcon size={24} />
+                <button onClick={() => setShowMembersModal(false)} className="text-x-gray hover:text-white">
+                  <X size={24} />
                 </button>
               </div>
 
-              {/* Stats */}
-              {circleStats && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                  <div className="border border-gray-800 rounded-xl p-3 bg-black/50">
-                    <p className="text-xs text-gray-400 mb-1">Members</p>
-                    <p className="text-xl font-bold text-white">
-                      {circleStats.memberCount}
-                    </p>
-                  </div>
-                  <div className="border border-gray-800 rounded-xl p-3 bg-black/50">
-                    <p className="text-xs text-gray-400 mb-1">Sessions</p>
-                    <p className="text-xl font-bold text-white">
-                      {circleStats.totalSessions}
-                    </p>
-                  </div>
-                  <div className="border border-gray-800 rounded-xl p-3 bg-black/50">
-                    <p className="text-xs text-gray-400 mb-1">Total Time</p>
-                    <p className="text-xl font-bold text-white">
-                      {formatTime(circleStats.totalTime)}
-                    </p>
-                  </div>
-                  <div className="border border-gray-800 rounded-xl p-3 bg-black/50">
-                    <p className="text-xs text-gray-400 mb-1">Avg Time</p>
-                    <p className="text-xl font-bold text-white">
-                      {formatTime(circleStats.avgTime)}
-                    </p>
-                  </div>
+              {loadingMembers ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-x-blue border-t-transparent"></div>
                 </div>
-              )}
-
-              {/* Members List */}
-              <div className="mb-6">
-                <h4 className="text-lg font-bold text-white mb-3 flex items-center space-x-2">
-                  <Users size={18} className="text-purple-500" />
-                  <span>Members</span>
-                </h4>
-                
-                {loadingDetails ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
-                    <p className="text-gray-400 mt-2">Loading members...</p>
-                  </div>
-                ) : circleMembers.length === 0 ? (
-                  <div className="text-center py-8 border border-gray-800 rounded-xl">
-                    <Users size={32} className="mx-auto text-gray-600 mb-2" />
-                    <p className="text-gray-400">No members found</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {circleMembers.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800"
-                      >
-                        <div className="flex items-center space-x-3">
-                          {member.avatar_url ? (
-                            <img
-                              src={member.avatar_url}
-                              alt={member.username}
-                              className="h-10 w-10 rounded-full object-cover border border-gray-700"
-                            />
-                          ) : (
-                            <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                              <Users size={20} className="text-white" />
-                            </div>
-                          )}
-                          <div>
-                            <p className="font-semibold text-white">
-                              {member.username}
-                              {member.id === user.id && (
-                                <span className="ml-2 text-xs text-gray-400">(You)</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              Joined {formatDate(member.joined_at)}
-                            </p>
-                          </div>
+              ) : (
+                <div className="space-y-2">
+                  {circleMembers.map((member, i) => (
+                    <div key={member.user_id} className="flex items-center justify-between p-3 bg-black rounded-xl border border-x-border">
+                      <div className="flex items-center space-x-3">
+                        <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold">
+                          {member.username[0].toUpperCase()}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Leaderboard */}
-              {leaderboard && leaderboard.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-lg font-bold text-white mb-3 flex items-center space-x-2">
-                    <Trophy size={18} className="text-yellow-500" />
-                    <span>Leaderboard</span>
-                  </h4>
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {leaderboard.map((entry, index) => (
-                      <div
-                        key={entry.user_id}
-                        className="flex items-center justify-between p-3 bg-black/50 rounded-lg border border-gray-800"
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div className={`
-                            h-8 w-8 rounded-full flex items-center justify-center font-bold text-sm
-                            ${index === 0 ? 'bg-yellow-500 text-black' : ''}
-                            ${index === 1 ? 'bg-gray-400 text-black' : ''}
-                            ${index === 2 ? 'bg-orange-600 text-white' : ''}
-                            ${index > 2 ? 'bg-gray-800 text-gray-400' : ''}
-                          `}>
-                            {index + 1}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-white">
-                              {entry.username || 'Unknown'}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              {entry.session_count} sessions
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-white">
-                            {formatTime(entry.total_time)}
+                        <div>
+                          <p className="font-semibold">{member.username}</p>
+                          <p className="text-xs text-x-gray">
+                            Joined {new Date(member.joined_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      {member.user_id === selectedCircle.created_by && (
+                        <Crown size={18} className="text-yellow-500" />
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-              {/* Leave Circle Button */}
-              <Button
-                onClick={() => handleLeaveCircle(selectedCircle.id)}
-                variant="danger"
-                className="w-full flex items-center justify-center space-x-2"
-              >
-                <LogOut size={16} />
-                <span>Leave Circle</span>
-              </Button>
+      {/* Analytics Modal */}
+      <AnimatePresence>
+        {showAnalyticsModal && selectedCircle && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setShowAnalyticsModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h3 className="text-xl font-bold">{selectedCircle.name}</h3>
+                  <p className="text-sm text-x-gray">Circle Analytics</p>
+                </div>
+                <button onClick={() => setShowAnalyticsModal(false)} className="text-x-gray hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+
+              {loadingAnalytics ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-x-blue border-t-transparent"></div>
+                </div>
+              ) : circleAnalytics ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="border border-x-border rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <TrendingUp size={16} className="text-blue-500" />
+                        <span className="text-xs text-x-gray">Total Sessions</span>
+                      </div>
+                      <p className="text-2xl font-bold">{circleAnalytics.totalSessions}</p>
+                    </div>
+                    <div className="border border-x-border rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Clock size={16} className="text-purple-500" />
+                        <span className="text-xs text-x-gray">Total Time</span>
+                      </div>
+                      <p className="text-2xl font-bold">{formatDuration(circleAnalytics.totalTime)}</p>
+                    </div>
+                    <div className="border border-x-border rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Users size={16} className="text-green-500" />
+                        <span className="text-xs text-x-gray">Active Members</span>
+                      </div>
+                      <p className="text-2xl font-bold">{circleAnalytics.activeMembers}</p>
+                    </div>
+                    <div className="border border-x-border rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Award size={16} className="text-yellow-500" />
+                        <span className="text-xs text-x-gray">Avg Duration</span>
+                      </div>
+                      <p className="text-2xl font-bold">{formatDuration(circleAnalytics.avgDuration)}</p>
+                    </div>
+                  </div>
+
+                  {circleAnalytics.topPerformer && (
+                    <div className="border border-yellow-500/20 bg-yellow-500/5 rounded-xl p-4">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Crown size={18} className="text-yellow-500" />
+                        <span className="text-sm font-semibold">Top Performer</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold">{circleAnalytics.topPerformer.username}</p>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatDuration(circleAnalytics.topPerformer.totalTime)}</p>
+                          <p className="text-xs text-x-gray">{circleAnalytics.topPerformer.sessions} sessions</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-x-gray">No analytics data available yet</p>
+                  <p className="text-sm text-x-gray mt-2">Complete some sessions to see stats!</p>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
