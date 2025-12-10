@@ -101,6 +101,8 @@ export class AchievementChecker {
           user_id: userId,
           total_xp: newTotalXP,
           current_level: newLevel  // Now it's just a number!
+        }, {
+          onConflict: 'user_id'  // ← Tell it which column to check!
         });
 
       // Log level up
