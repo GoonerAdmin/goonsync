@@ -35,11 +35,47 @@ const Dashboard = ({
     if (user && supabase) {
       loadDashboardData();
       
-      // Refresh every 10 seconds
+      // Refresh dashboard data every 10 seconds
       const interval = setInterval(loadDashboardData, 10000);
-      return () => clearInterval(interval);
+      
+      // Refresh JUST active users every 3 seconds (more frequent for real-time feel)
+      const activeUsersInterval = setInterval(async () => {
+        if (circles && circles.length > 0) {
+          const circleIds = circles.map(c => c.id);
+          
+          const { data: activeData } = await supabase
+            .from('active_syncs')
+            .select('user_id, started_at, circle_id')
+            .in('circle_id', circleIds)
+            .neq('user_id', user.id);
+
+          if (activeData && activeData.length > 0) {
+            const activeUserIds = activeData.map(a => a.user_id);
+            
+            const { data: profilesData } = await supabase
+              .from('profiles')
+              .select('id, username, avatar_url')
+              .in('id', activeUserIds);
+
+            if (profilesData) {
+              const combined = activeData.map(active => ({
+                ...active,
+                ...profilesData.find(p => p.id === active.user_id)
+              }));
+              setActiveMembers(combined);
+            }
+          } else {
+            setActiveMembers([]);
+          }
+        }
+      }, 3000); // Every 3 seconds for active users
+      
+      return () => {
+        clearInterval(interval);
+        clearInterval(activeUsersInterval);
+      };
     }
-  }, [user, supabase, sessions, isSyncing, circles]); // ← ADDED circles too!
+  }, [user, supabase, sessions, isSyncing, circles]);
 
   const loadDashboardData = async () => {
     if (!user || !supabase) return;
