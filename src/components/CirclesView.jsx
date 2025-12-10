@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Crown, Link2, Plus, X, TrendingUp, Clock, Award, UserMinus, Eye, BarChart3, CheckCircle, AlertCircle, Copy, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../supabaseClient';
 import Button from './Button';
 
-const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
+const CirclesView = ({ 
+  user, 
+  profile, 
+  circles, 
+  onCreateCircle,
+  onJoinCircle,
+  setError,
+  supabase 
+}) => {
   const [newCircleName, setNewCircleName] = useState('');
   const [joinCode, setJoinCode] = useState('');
   const [selectedCircle, setSelectedCircle] = useState(null);
@@ -17,11 +24,6 @@ const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
   const [copiedCode, setCopiedCode] = useState(null);
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
-
-  // Generate 6-digit numeric code
-  const generateInviteCode = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
 
   const createCircle = async () => {
     if (!newCircleName.trim()) {
@@ -37,30 +39,17 @@ const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
     }
 
     setCreating(true);
-    const inviteCode = generateInviteCode();
     
     try {
-      const { data: circleData, error } = await supabase
-        .from('circles')
-        .insert([{ name: newCircleName, invite_code: inviteCode, created_by: user.id }])
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (circleData) {
-        await supabase.from('circle_members').insert([{ 
-          circle_id: circleData.id, 
-          user_id: user.id, 
-          username: profile.username 
-        }]);
-        
+      const result = await onCreateCircle(newCircleName);
+      
+      if (result.success) {
         setNewCircleName('');
-        onCirclesUpdate();
-        
-        // Success message with invite code
-        setError(`✨ Circle created! Code: ${inviteCode}`);
+        setError(`✨ ${result.message}`);
         setTimeout(() => setError(''), 5000);
+      } else {
+        setError(result.error);
+        setTimeout(() => setError(''), 3000);
       }
     } catch (error) {
       console.error('Error creating circle:', error);
@@ -95,58 +84,16 @@ const CirclesView = ({ user, profile, circles, onCirclesUpdate, setError }) => {
     setJoining(true);
     
     try {
-      const { data: circleData, error: circleError } = await supabase
-        .from('circles')
-        .select('*')
-        .eq('invite_code', code)
-        .single();
-
-      if (circleError || !circleData) {
-        setError('Invalid invite code');
+      const result = await onJoinCircle(code);
+      
+      if (result.success) {
+        setJoinCode('');
+        setError(`✨ ${result.message}`);
         setTimeout(() => setError(''), 3000);
-        setJoining(false);
-        return;
-      }
-
-      // Check if already a member
-      const { data: existing } = await supabase
-        .from('circle_members')
-        .select('*')
-        .eq('circle_id', circleData.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (existing) {
-        setError('You\'re already in this circle');
+      } else {
+        setError(result.error);
         setTimeout(() => setError(''), 3000);
-        setJoining(false);
-        return;
       }
-
-      // Check circle capacity
-      const { data: members } = await supabase
-        .from('circle_members')
-        .select('*')
-        .eq('circle_id', circleData.id);
-
-      if (members && members.length >= 6) {
-        setError('Circle is full (max 6 members)');
-        setTimeout(() => setError(''), 3000);
-        setJoining(false);
-        return;
-      }
-
-      // Join the circle
-      await supabase.from('circle_members').insert([{ 
-        circle_id: circleData.id, 
-        user_id: user.id, 
-        username: profile.username 
-      }]);
-
-      setJoinCode('');
-      onCirclesUpdate();
-      setError(`✨ Joined "${circleData.name}"!`);
-      setTimeout(() => setError(''), 3000);
     } catch (error) {
       console.error('Error joining circle:', error);
       setError('Failed to join circle');
