@@ -42,12 +42,14 @@ const Dashboard = ({
       const activeUsersInterval = setInterval(async () => {
         if (circles && circles.length > 0) {
           const circleIds = circles.map(c => c.id);
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
           
           const { data: activeData } = await supabase
             .from('active_syncs')
-            .select('user_id, started_at, circle_id')
+            .select('user_id, created_at, circle_id')
             .in('circle_id', circleIds)
-            .neq('user_id', user.id);
+            .neq('user_id', user.id)
+            .gte('created_at', fiveMinutesAgo); // Only last 5 minutes
 
           if (activeData && activeData.length > 0) {
             const activeUserIds = activeData.map(a => a.user_id);
@@ -145,12 +147,15 @@ const Dashboard = ({
       if (circles && circles.length > 0) {
         const circleIds = circles.map(c => c.id);
         
-        // Query 1: Get active sync records
+        // Query 1: Get active sync records (only from last 5 minutes)
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+        
         const { data: activeData, error: activeError } = await supabase
           .from('active_syncs')
-          .select('user_id, started_at, circle_id')
+          .select('user_id, created_at, circle_id')
           .in('circle_id', circleIds)
-          .neq('user_id', user.id); // Exclude current user
+          .neq('user_id', user.id) // Exclude current user
+          .gte('created_at', fiveMinutesAgo); // Only last 5 minutes
 
         if (activeError) throw activeError;
 
@@ -172,7 +177,7 @@ const Dashboard = ({
               id: a.user_id,
               username: profile?.username || 'Unknown User',
               avatar_url: profile?.avatar_url,
-              started_at: a.started_at
+              created_at: a.created_at
             };
           });
 
