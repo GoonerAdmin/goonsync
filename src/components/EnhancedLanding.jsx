@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
-import { Zap, Users, Trophy, Target, Sparkles, ArrowRight } from 'lucide-react';
-import GlassCard from './GlassCard';
-import GlassButton from './GlassButton';
+import { motion } from 'framer-motion';
+import { Zap, Users, Trophy, Target, Sparkles, ArrowRight, X } from 'lucide-react';
 
 const EnhancedLanding = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState('signup'); // 'signup' or 'signin'
+  const [authMode, setAuthMode] = useState('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -20,7 +19,6 @@ const EnhancedLanding = () => {
 
     try {
       if (authMode === 'signup') {
-        // Sign up
         const { data, error: signUpError } = await supabase.auth.signUp({
           email,
           password,
@@ -33,7 +31,6 @@ const EnhancedLanding = () => {
 
         if (signUpError) throw signUpError;
 
-        // Create profile
         if (data.user) {
           const { error: profileError } = await supabase
             .from('profiles')
@@ -50,7 +47,6 @@ const EnhancedLanding = () => {
 
         alert('Sign up successful! Check your email for verification.');
       } else {
-        // Sign in
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -65,9 +61,21 @@ const EnhancedLanding = () => {
     }
   };
 
+  const openSignUp = () => {
+    console.log('Opening sign up modal');
+    setAuthMode('signup');
+    setShowAuthModal(true);
+  };
+
+  const openSignIn = () => {
+    console.log('Opening sign in modal');
+    setAuthMode('signin');
+    setShowAuthModal(true);
+  };
+
   return (
     <div className="min-h-screen bg-dark-base relative overflow-hidden">
-      {/* Animated background elements */}
+      {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute w-96 h-96 bg-xp-green/10 rounded-full blur-3xl -top-48 -left-48 animate-pulse" />
         <div className="absolute w-96 h-96 bg-rarity-rare/10 rounded-full blur-3xl -bottom-48 -right-48 animate-pulse" style={{ animationDelay: '1s' }} />
@@ -83,15 +91,14 @@ const EnhancedLanding = () => {
             <span className="text-2xl font-bold text-white">GoonSync</span>
           </div>
 
-          <GlassButton
-            variant="secondary"
-            onClick={() => {
-              setAuthMode('signin');
-              setShowAuthModal(true);
-            }}
+          <motion.button
+            onClick={openSignIn}
+            className="px-4 py-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white font-medium hover:bg-white/10 transition-all"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
             Sign In
-          </GlassButton>
+          </motion.button>
         </div>
       </nav>
 
@@ -100,52 +107,74 @@ const EnhancedLanding = () => {
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-4xl mx-auto">
             {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-xp-green/10 border border-xp-green/30 mb-6">
+            <motion.div 
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-xp-green/10 border border-xp-green/30 mb-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
               <Sparkles size={16} className="text-xp-green" />
               <span className="text-xp-green font-medium">Level up your social experience</span>
-            </div>
+            </motion.div>
 
             {/* Headline */}
-            <h1 className="text-6xl md:text-7xl font-bold text-white mb-6 leading-tight">
+            <motion.h1 
+              className="text-6xl md:text-7xl font-bold text-white mb-6 leading-tight"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
               Sync Your Life,
               <br />
               <span className="text-transparent bg-clip-text bg-xp-gradient">
                 Level Up Together
               </span>
-            </h1>
+            </motion.h1>
 
-            <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
+            <motion.p 
+              className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
               Real-time social synchronization meets gamification. Track your progress, unlock achievements, and build circles with friends.
-            </p>
+            </motion.p>
 
             {/* CTA Buttons */}
-            <div className="flex items-center justify-center gap-4">
-              <GlassButton
-                variant="primary"
-                size="lg"
-                icon={ArrowRight}
-                iconPosition="right"
-                onClick={() => {
-                  setAuthMode('signup');
-                  setShowAuthModal(true);
-                }}
+            <motion.div 
+              className="flex items-center justify-center gap-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <motion.button
+                onClick={openSignUp}
+                className="px-8 py-4 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green flex items-center gap-2 text-lg"
+                whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(0,255,136,0.5)' }}
+                whileTap={{ scale: 0.95 }}
               >
                 Start For Free
-              </GlassButton>
+                <ArrowRight size={20} />
+              </motion.button>
 
-              <GlassButton
-                variant="secondary"
-                size="lg"
+              <motion.button
                 onClick={() => {
-                  document.getElementById('features').scrollIntoView({ behavior: 'smooth' });
+                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
                 }}
+                className="px-8 py-4 bg-white/5 backdrop-blur-sm border border-white/10 text-white rounded-xl font-medium hover:bg-white/10 transition-all text-lg"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
                 Learn More
-              </GlassButton>
-            </div>
+              </motion.button>
+            </motion.div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto mt-16">
+            <motion.div 
+              className="grid grid-cols-3 gap-8 max-w-2xl mx-auto mt-16"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
               <div>
                 <div className="text-3xl font-bold text-xp-green mb-1">50</div>
                 <div className="text-sm text-gray-400">Levels to Master</div>
@@ -158,7 +187,7 @@ const EnhancedLanding = () => {
                 <div className="text-3xl font-bold text-xp-green mb-1">∞</div>
                 <div className="text-sm text-gray-400">Circles to Join</div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>
@@ -176,49 +205,28 @@ const EnhancedLanding = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Feature 1 */}
-            <GlassCard className="p-6">
-              <div className="w-12 h-12 rounded-lg bg-xp-gradient/20 border border-xp-green/30 flex items-center justify-center mb-4">
-                <Zap className="text-xp-green" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">XP System</h3>
-              <p className="text-gray-400">
-                Earn XP for every action. Level up and unlock exclusive rewards.
-              </p>
-            </GlassCard>
-
-            {/* Feature 2 */}
-            <GlassCard className="p-6">
-              <div className="w-12 h-12 rounded-lg bg-rarity-rare/20 border border-rarity-rare/30 flex items-center justify-center mb-4">
-                <Trophy className="text-rarity-rare" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Achievements</h3>
-              <p className="text-gray-400">
-                47 unique badges across 4 rarity tiers. Show off your progress.
-              </p>
-            </GlassCard>
-
-            {/* Feature 3 */}
-            <GlassCard className="p-6">
-              <div className="w-12 h-12 rounded-lg bg-rarity-epic/20 border border-rarity-epic/30 flex items-center justify-center mb-4">
-                <Users className="text-rarity-epic" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Social Circles</h3>
-              <p className="text-gray-400">
-                Create squads, sync with friends, and build your community.
-              </p>
-            </GlassCard>
-
-            {/* Feature 4 */}
-            <GlassCard className="p-6">
-              <div className="w-12 h-12 rounded-lg bg-achievement-gold/20 border border-achievement-gold/30 flex items-center justify-center mb-4">
-                <Target className="text-achievement-gold" size={24} />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Real-time Sync</h3>
-              <p className="text-gray-400">
-                Live updates across all devices. Stay connected anywhere.
-              </p>
-            </GlassCard>
+            {/* Feature Cards */}
+            {[
+              { icon: Zap, title: 'XP System', desc: 'Earn XP for every action. Level up and unlock exclusive rewards.', color: 'xp-green' },
+              { icon: Trophy, title: 'Achievements', desc: '47 unique badges across 4 rarity tiers. Show off your progress.', color: 'rarity-rare' },
+              { icon: Users, title: 'Social Circles', desc: 'Create squads, sync with friends, and build your community.', color: 'rarity-epic' },
+              { icon: Target, title: 'Real-time Sync', desc: 'Live updates across all devices. Stay connected anywhere.', color: 'achievement-gold' },
+            ].map((feature, i) => (
+              <motion.div
+                key={i}
+                className="p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:bg-white/10 transition-all"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 * i }}
+                whileHover={{ y: -5 }}
+              >
+                <div className={`w-12 h-12 rounded-lg bg-${feature.color}/20 border border-${feature.color}/30 flex items-center justify-center mb-4`}>
+                  <feature.icon className={`text-${feature.color}`} size={24} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">{feature.title}</h3>
+                <p className="text-gray-400">{feature.desc}</p>
+              </motion.div>
+            ))}
           </div>
         </div>
       </div>
@@ -226,26 +234,23 @@ const EnhancedLanding = () => {
       {/* CTA Section */}
       <div className="relative z-10 px-6 py-20">
         <div className="max-w-4xl mx-auto">
-          <GlassCard className="p-12 text-center">
+          <div className="p-12 bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl text-center">
             <h2 className="text-4xl font-bold text-white mb-4">
               Ready to Start Your Journey?
             </h2>
             <p className="text-xl text-gray-400 mb-8">
               Join GoonSync today and level up your social experience.
             </p>
-            <GlassButton
-              variant="primary"
-              size="lg"
-              icon={ArrowRight}
-              iconPosition="right"
-              onClick={() => {
-                setAuthMode('signup');
-                setShowAuthModal(true);
-              }}
+            <motion.button
+              onClick={openSignUp}
+              className="px-8 py-4 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green flex items-center gap-2 text-lg mx-auto"
+              whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(0,255,136,0.5)' }}
+              whileTap={{ scale: 0.95 }}
             >
               Get Started Now
-            </GlassButton>
-          </GlassCard>
+              <ArrowRight size={20} />
+            </motion.button>
+          </div>
         </div>
       </div>
 
@@ -267,7 +272,21 @@ const EnhancedLanding = () => {
       {/* Auth Modal */}
       {showAuthModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <GlassCard className="w-full max-w-md p-8" hover={false}>
+          <motion.div
+            className="w-full max-w-md p-8 bg-dark-secondary/95 backdrop-blur-glass border border-white/10 rounded-3xl shadow-glass relative"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            <button
+              onClick={() => {
+                setShowAuthModal(false);
+                setError('');
+              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <X size={24} />
+            </button>
+
             <h2 className="text-2xl font-bold text-white mb-6">
               {authMode === 'signup' ? 'Create Account' : 'Welcome Back'}
             </h2>
@@ -323,14 +342,13 @@ const EnhancedLanding = () => {
                 </div>
               )}
 
-              <GlassButton
-                variant="primary"
+              <button
                 type="submit"
                 disabled={isLoading}
-                fullWidth
+                className="w-full px-6 py-3 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green hover:shadow-[0_0_30px_rgba(0,255,136,0.5)] transition-all disabled:opacity-50"
               >
                 {isLoading ? 'Loading...' : authMode === 'signup' ? 'Create Account' : 'Sign In'}
-              </GlassButton>
+              </button>
 
               <div className="text-center">
                 <button
@@ -344,17 +362,7 @@ const EnhancedLanding = () => {
                 </button>
               </div>
             </form>
-
-            <button
-              onClick={() => {
-                setShowAuthModal(false);
-                setError('');
-              }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-            >
-              ✕
-            </button>
-          </GlassCard>
+          </motion.div>
         </div>
       )}
     </div>
