@@ -1,142 +1,225 @@
-import React from 'react';
-import { Play, Square, TrendingUp, Users, Clock } from 'lucide-react';
-import Button from '../components/Button';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { Users, Zap, Trophy, Plus, TrendingUp } from 'lucide-react';
+import GlassCard from '../components/GlassCard';
+import XPBar from '../components/XPBar';
+import BattlePassTrack from '../components/BattlePassTrack';
+import StatCard from '../components/StatCard';
+import GlassButton from '../components/GlassButton';
 import SyncCard from '../components/SyncCard';
 
-const Dashboard = ({ 
-  user,
-  profile,
-  isSyncing, 
-  elapsedTime, 
-  onStartSync, 
-  onStopSync,
-  circles,
-  sessions,
-  activeUsers,
-  analytics
-}) => {
-  const formatTime = (seconds) => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const [profile, setProfile] = useState(null);
+  const [circles, setCircles] = useState([]);
+  const [activeSyncs, setActiveSyncs] = useState([]);
+  const [todayXP, setTodayXP] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const loadDashboard = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        navigate('/login');
+        return;
+      }
+
+      // Load profile
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      setProfile(profileData);
+
+      // Load circles
+      const { data: circlesData } = await supabase
+        .from('circle_members')
+        .select(`
+          circle_id,
+          circles (
+            id,
+            name,
+            description,
+            created_at
+          )
+        `)
+        .eq('user_id', user.id);
+
+      setCircles(circlesData?.map(c => c.circles) || []);
+
+      // Load active syncs
+      const { data: syncsData } = await supabase
+        .from('active_syncs')
+        .select('*')
+        .eq('user_id', user.id);
+
+      setActiveSyncs(syncsData || []);
+
+      // Calculate today's XP (mock for now)
+      setTodayXP(150);
+
+    } catch (error) {
+      console.error('Error loading dashboard:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const otherActiveUsers = activeUsers.filter(u => u.user_id !== user?.id);
-  const recentSessions = sessions.filter(s => s.duration_seconds).slice(0, 10);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-dark-base flex items-center justify-center">
+        <div className="text-white text-xl">Loading dashboard...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <div className="sticky top-0 bg-black/80 backdrop-blur-sm border-b border-x-border z-10">
-        <div className="px-4 py-3">
-          <h2 className="text-xl font-bold">Home</h2>
-        </div>
-      </div>
-
-      {/* Active Users Alert */}
-      {otherActiveUsers.length > 0 && !isSyncing && (
-        <div className="border-b border-x-border bg-green-500/5 p-4 animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <p className="text-green-400">
-              {otherActiveUsers.map(u => u.username).join(', ')} {otherActiveUsers.length === 1 ? 'is' : 'are'} syncing now!
-            </p>
+    <div className="min-h-screen bg-dark-base p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Welcome Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-white mb-2">
+              Welcome back, {profile?.full_name || profile?.username}!
+            </h1>
+            <p className="text-gray-400">Ready to level up today?</p>
           </div>
-        </div>
-      )}
 
-      {/* Main Sync Control */}
-      <div className="border-b border-x-border p-6">
-        {!isSyncing ? (
-          <div className="text-center py-8">
-            <h3 className="text-2xl font-bold mb-2">Ready to sync?</h3>
-            <p className="text-x-gray mb-6">
-              {circles.length === 0 
-                ? 'Join a circle to get started' 
-                : `Connected to ${circles.length} circle${circles.length > 1 ? 's' : ''}`
-              }
-            </p>
-            <Button 
-              onClick={onStartSync}
-              disabled={circles.length === 0}
-              variant="primary"
-              size="lg"
-              icon={Play}
-            >
-              Start Sync
-            </Button>
+          <GlassButton 
+            variant="primary"
+            icon={Plus}
+            onClick={() => navigate('/circles')}
+          >
+            New Circle
+          </GlassButton>
+        </div>
+
+        {/* Battle Pass Track */}
+        <GlassCard className="p-6" hover={false}>
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-white mb-1">Level Progression</h2>
+            <p className="text-gray-400">Your journey to greatness</p>
           </div>
-        ) : (
-          <div className="text-center py-8">
-            <div className="mb-4">
-              <div className="inline-flex items-center gap-2 bg-green-500/10 px-4 py-2 rounded-full border border-green-500/20">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-green-400 text-sm font-medium">Active Session</span>
-              </div>
+          <BattlePassTrack 
+            currentLevel={profile?.level || 1}
+            maxLevel={50}
+          />
+        </GlassCard>
+
+        {/* XP Progress */}
+        <GlassCard className="p-6" hover={false}>
+          <XPBar 
+            currentXP={profile?.experience_points || 0}
+            level={profile?.level || 1}
+            nextLevelXP={(profile?.level || 1) * 100}
+            size="lg"
+          />
+        </GlassCard>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <StatCard
+            icon={TrendingUp}
+            label="XP Gained Today"
+            value={`+${todayXP}`}
+            trend="up"
+            color="xp-green"
+          />
+          <StatCard
+            icon={Users}
+            label="Active Circles"
+            value={circles.length}
+            color="rarity-rare"
+          />
+          <StatCard
+            icon={Zap}
+            label="Active Sessions"
+            value={activeSyncs.length}
+            color="rarity-epic"
+          />
+          <StatCard
+            icon={Trophy}
+            label="Achievements"
+            value="2/47"
+            color="achievement-gold"
+          />
+        </div>
+
+        {/* Active Syncs */}
+        {activeSyncs.length > 0 && (
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-4">Active Syncs</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeSyncs.map((sync) => (
+                <SyncCard key={sync.id} sync={sync} />
+              ))}
             </div>
-            <div className="text-6xl font-mono font-bold mb-6 tracking-tight">
-              {formatTime(elapsedTime)}
-            </div>
-            <Button 
-              onClick={onStopSync}
-              variant="danger"
-              size="lg"
-              icon={Square}
-            >
-              End Session
-            </Button>
           </div>
         )}
-      </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-3 border-b border-x-border">
-        <div className="p-4 border-r border-x-border text-center hover:bg-x-hover transition-colors">
-          <div className="text-2xl font-bold">{analytics?.totalSessions || 0}</div>
-          <div className="text-x-gray text-xs mt-1">Sessions</div>
-        </div>
-        <div className="p-4 border-r border-x-border text-center hover:bg-x-hover transition-colors">
-          <div className="text-2xl font-bold">{formatTime(Math.floor(analytics?.avgDuration || 0))}</div>
-          <div className="text-x-gray text-xs mt-1">Avg Time</div>
-        </div>
-        <div className="p-4 text-center hover:bg-x-hover transition-colors">
-          <div className="text-2xl font-bold">{activeUsers?.length || 0}</div>
-          <div className="text-x-gray text-xs mt-1">Active Now</div>
-        </div>
-      </div>
-
-      {/* Activity Feed */}
-      <div>
-        {recentSessions.length === 0 ? (
-          <div className="p-12 text-center border-b border-x-border">
-            <Clock size={48} className="mx-auto mb-4 text-x-gray" />
-            <p className="text-x-gray">No recent activity</p>
-            <p className="text-x-gray text-sm mt-1">Start your first sync session!</p>
+        {/* Your Circles */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-bold text-white">Your Circles</h2>
+            <GlassButton 
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate('/circles')}
+            >
+              View All
+            </GlassButton>
           </div>
-        ) : (
-          <>
-            <div className="px-4 py-3 border-b border-x-border">
-              <h3 className="font-bold text-sm text-x-gray">Recent Activity</h3>
-            </div>
-            {recentSessions.map((session) => (
-              <SyncCard 
-                key={session.id} 
-                sync={session} 
-                currentUser={user}
-              />
-            ))}
-          </>
-        )}
-      </div>
 
-      {/* Trending/Suggestions (Placeholder for future) */}
-      <div className="p-6 border-b border-x-border bg-x-hover/30">
-        <div className="flex items-center gap-2 mb-3">
-          <TrendingUp size={20} className="text-x-gray" />
-          <h3 className="font-bold">What's trending</h3>
+          {circles.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {circles.slice(0, 6).map((circle) => (
+                <GlassCard 
+                  key={circle.id}
+                  className="p-6 cursor-pointer"
+                  onClick={() => navigate(`/circles/${circle.id}`)}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-xp-gradient/20 border border-xp-green/30 flex items-center justify-center flex-shrink-0">
+                      <Users size={24} className="text-xp-green" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-bold text-white mb-1 truncate">
+                        {circle.name}
+                      </h3>
+                      {circle.description && (
+                        <p className="text-sm text-gray-400 line-clamp-2">
+                          {circle.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
+          ) : (
+            <GlassCard className="p-12 text-center">
+              <Users size={48} className="text-gray-600 mx-auto mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">No Circles Yet</h3>
+              <p className="text-gray-400 mb-6">
+                Create or join a circle to start syncing with others!
+              </p>
+              <GlassButton 
+                variant="primary"
+                icon={Plus}
+                onClick={() => navigate('/circles')}
+              >
+                Create Your First Circle
+              </GlassButton>
+            </GlassCard>
+          )}
         </div>
-        <p className="text-x-gray text-sm">Coming soon - see what your friends are up to</p>
       </div>
     </div>
   );
