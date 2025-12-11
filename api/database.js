@@ -1,163 +1,168 @@
-// Vercel Serverless Function - Database Proxy
-// NOW WITH USER AUTHENTICATION SUPPORT!
+// api/database.js - Vercel Serverless Function for authenticated Supabase operations
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tjtxtoeydnkgymovxqqr.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRqdHh0b2V5ZG5rZ3ltb3Z4cXFyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3OTQ2NzEsImV4cCI6MjA4MDM3MDY3MX0.abZaguuR3CYE_5Gdu7BWniRZL3On_8hVYqhBJg84C1Y';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.REACT_APP_SUPABASE_URL,
+  process.env.REACT_APP_SUPABASE_ANON_KEY
+);
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+  // Only allow POST requests
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { table, action, data: queryData, filters, select, order, limit } = req.body;
-
-  // CRITICAL: Get user's JWT token from Authorization header
-  const authHeader = req.headers.authorization;
-  const userToken = authHeader ? authHeader.replace('Bearer ', '') : null;
-
   try {
-    let url = `${SUPABASE_URL}/rest/v1/${table}`;
-    let method = 'GET';
-    let body = null;
-    const headers = {
-      'Content-Type': 'application/json',
-      'apikey': SUPABASE_ANON_KEY,
-      // CRITICAL: Use user's token if provided, otherwise anon key
-      'Authorization': userToken ? `Bearer ${userToken}` : `Bearer ${SUPABASE_ANON_KEY}`,
-      'Prefer': 'return=representation'
-    };
+    // Get JWT token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
 
+    const token = authHeader.replace('Bearer ', '');
+
+    // Get request body
+    const { table, action, data, filters, options } = req.body;
+
+    if (!table || !action) {
+      return res.status(400).json({ error: 'Missing required parameters: table, action' });
+    }
+
+    // Create authenticated Supabase client with JWT
+    const authedSupabase = createClient(
+      process.env.REACT_APP_SUPABASE_URL,
+      process.env.REACT_APP_SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      }
+    );
+
+    let query;
+
+    // Handle different actions
     switch (action) {
-      case 'select': {
-        method = 'GET';
-        headers['Prefer'] = 'count=exact';
+      case 'select':
+        query = authedSupabase.from(table).select('*');
         
-        // Build query params
-        const params = new URLSearchParams();
-        if (select && select !== '*') params.append('select', select);
-        
-        // Apply filters
-        if (filters) {
-          Object.entries(filters).forEach(([key, value]) => {
-            if (key.endsWith('_in')) {
-              const actualKey = key.replace('_in', '');
-              params.append(actualKey, `in.(${value.join(',')})`);
-            } else {
-              params.append(key, `eq.${value}`);
+        // Apply filters if provided
+        if (filters && Array.isArray(filters)) {
+          filters.forEach(filter => {
+            if (filter.type === 'eq') {
+              query = query.eq(filter.column, filter.value);
+            } else if (filter.type === 'in') {
+              query = query.in(filter.column, filter.value);
+            } else if (filter.type === 'gte') {
+              query = query.gte(filter.column, filter.value);
+            } else if (filter.type === 'lte') {
+              query = query.lte(filter.column, filter.value);
+            } else if (filter.type === 'gt') {
+              query = query.gt(filter.column, filter.value);
+            } else if (filter.type === 'lt') {
+              query = query.lt(filter.column, filter.value);
+            } else if (filter.type === 'not') {
+              query = query.not(filter.column, filter.operator, filter.value);
             }
           });
         }
+
+        // Apply options if provided
+        if (options) {
+          if (options.order) {
+            query = query.order(options.order.column, { ascending: options.order.ascending });
+          }
+          if (options.limit) {
+            query = query.limit(options.limit);
+          }
+          if (options.single) {
+            query = query.single();
+          }
+        }
+
+        const { data: selectData, error: selectError } = await query;
         
-        // Apply ordering
-        if (order) {
-          params.append('order', `${order.column}.${order.ascending !== false ? 'asc' : 'desc'}`);
+        if (selectError) {
+          return res.status(400).json({ error: selectError.message, details: selectError });
         }
         
-        // Apply limit
-        if (limit) {
-          params.append('limit', limit);
+        return res.status(200).json({ data: selectData });
+
+      case 'insert':
+        const { data: insertData, error: insertError } = await authedSupabase
+          .from(table)
+          .insert(data)
+          .select();
+        
+        if (insertError) {
+          return res.status(400).json({ error: insertError.message, details: insertError });
         }
         
-        if (params.toString()) url += '?' + params.toString();
-        break;
-      }
+        return res.status(200).json({ data: insertData });
 
-      case 'insert': {
-        method = 'POST';
-        body = JSON.stringify(queryData);
-        break;
-      }
-
-      case 'update': {
-        method = 'PATCH';
-        body = JSON.stringify(queryData);
+      case 'update':
+        query = authedSupabase.from(table).update(data);
         
         // Apply filters
-        if (filters) {
-          const params = new URLSearchParams();
-          Object.entries(filters).forEach(([key, value]) => {
-            params.append(key, `eq.${value}`);
+        if (filters && Array.isArray(filters)) {
+          filters.forEach(filter => {
+            if (filter.type === 'eq') {
+              query = query.eq(filter.column, filter.value);
+            }
           });
-          url += '?' + params.toString();
         }
-        break;
-      }
 
-      case 'upsert': {
-        method = 'POST';
-        body = JSON.stringify(queryData);
+        const { data: updateData, error: updateError } = await query.select();
         
-        // Supabase upsert configuration
-        const options = req.body.options || {};
-        
-        if (options.onConflict) {
-          // Use merge-duplicates with specific conflict columns
-          headers['Prefer'] = `resolution=merge-duplicates,on-conflict=${options.onConflict}`;
-        } else {
-          // Default: use primary key
-          headers['Prefer'] = 'resolution=merge-duplicates';
+        if (updateError) {
+          return res.status(400).json({ error: updateError.message, details: updateError });
         }
         
-        break;
-      }
+        return res.status(200).json({ data: updateData });
 
-      case 'delete': {
-        method = 'DELETE';
+      case 'upsert':
+        const { data: upsertData, error: upsertError } = await authedSupabase
+          .from(table)
+          .upsert(data, options || {})
+          .select();
+        
+        if (upsertError) {
+          return res.status(400).json({ error: upsertError.message, details: upsertError });
+        }
+        
+        return res.status(200).json({ data: upsertData });
+
+      case 'delete':
+        query = authedSupabase.from(table).delete();
         
         // Apply filters
-        if (filters) {
-          const params = new URLSearchParams();
-          Object.entries(filters).forEach(([key, value]) => {
-            params.append(key, `eq.${value}`);
+        if (filters && Array.isArray(filters)) {
+          filters.forEach(filter => {
+            if (filter.type === 'eq') {
+              query = query.eq(filter.column, filter.value);
+            }
           });
-          url += '?' + params.toString();
         }
-        break;
-      }
 
-      case 'count': {
-        method = 'GET';
-        headers['Prefer'] = 'count=exact';
-        url += '?select=*&limit=0';
-        break;
-      }
+        const { data: deleteData, error: deleteError } = await query;
+        
+        if (deleteError) {
+          return res.status(400).json({ error: deleteError.message, details: deleteError });
+        }
+        
+        return res.status(200).json({ data: deleteData });
 
       default:
-        return res.status(400).json({ error: 'Invalid action' });
+        return res.status(400).json({ error: `Unknown action: ${action}` });
     }
-
-    const response = await fetch(url, {
-      method,
-      headers,
-      body
-    });
-
-    const responseData = await response.json();
-    
-    if (!response.ok) {
-      console.error('Supabase error:', responseData);
-      throw new Error(responseData.message || responseData.hint || 'Database operation failed');
-    }
-
-    // Extract count from header if needed
-    const count = response.headers.get('content-range')?.split('/')[1];
-
-    return res.status(200).json({ 
-      data: responseData, 
-      count: count ? parseInt(count) : null 
-    });
-
   } catch (error) {
-    console.error('Database error:', error);
-    return res.status(400).json({ error: error.message });
+    console.error('API Error:', error);
+    return res.status(500).json({ 
+      error: 'Internal server error', 
+      message: error.message 
+    });
   }
 }
