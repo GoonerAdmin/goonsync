@@ -1,230 +1,438 @@
-import React, { useState } from 'react';
-import { supabase } from '../supabaseClient';
-import { motion } from 'framer-motion';
-import { Zap, Users, Trophy, Target, Sparkles, ArrowRight, X } from 'lucide-react';
+// Enhanced Landing Page with Real-Time Stats and App Preview
+// This replaces the landing page section in App.js
 
-const EnhancedLanding = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [authMode, setAuthMode] = useState('signup');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [error, setError] = useState('');
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Zap, Users, Trophy, Play, Clock, Target, Award, TrendingUp,
+  ArrowRight, Sparkles, Menu, X as CloseIcon, CheckCircle,
+  Activity, BarChart3, Shield, Smartphone, Monitor, Star
+} from 'lucide-react';
+import AnimatedCounter from './AnimatedCounter';
 
-  const handleAuth = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setError('');
+// Stats fetching function (add this to your App.js)
+const fetchLandingStats = async (supabase) => {
+  try {
+    // Get total users
+    const { count: usersCount } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true });
 
-    try {
-      if (authMode === 'signup') {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              username: username,
-            }
-          }
-        });
+    // Get total sessions
+    const { count: sessionsCount } = await supabase
+      .from('sessions')
+      .select('*', { count: 'exact', head: true });
 
-        if (signUpError) throw signUpError;
+    // Get total circles
+    const { count: circlesCount } = await supabase
+      .from('circles')
+      .select('*', { count: 'exact', head: true });
 
-        if (data.user) {
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert([{
-              id: data.user.id,
-              username: username,
-              email: email,
-              level: 1,
-              experience_points: 0,
-            }]);
+    // Get total time tracked (in hours)
+    const { data: sessionsData } = await supabase
+      .from('sessions')
+      .select('duration_seconds');
+    
+    const totalHours = sessionsData
+      ? Math.floor(sessionsData.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) / 3600)
+      : 0;
 
-          if (profileError) throw profileError;
-        }
+    return {
+      users: usersCount || 0,
+      sessions: sessionsCount || 0,
+      circles: circlesCount || 0,
+      hours: totalHours
+    };
+  } catch (error) {
+    console.error('Failed to fetch landing stats:', error);
+    return { users: 0, sessions: 0, circles: 0, hours: 0 };
+  }
+};
 
-        alert('Sign up successful! Check your email for verification.');
-      } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+// Enhanced Landing Page Component
+const EnhancedLanding = ({ supabase, onGetStarted }) => {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [stats, setStats] = useState({ users: 0, sessions: 0, circles: 0, hours: 0 });
 
-        if (signInError) throw signInError;
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    loadStats();
+  }, []);
+
+  const loadStats = async () => {
+    if (supabase) {
+      const data = await fetchLandingStats(supabase);
+      setStats(data);
     }
   };
 
-  const openSignUp = () => {
-    console.log('Opening sign up modal');
-    setAuthMode('signup');
-    setShowAuthModal(true);
-  };
-
-  const openSignIn = () => {
-    console.log('Opening sign in modal');
-    setAuthMode('signin');
-    setShowAuthModal(true);
-  };
-
   return (
-    <div className="min-h-screen bg-dark-base relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute w-96 h-96 bg-xp-green/10 rounded-full blur-3xl -top-48 -left-48 animate-pulse" />
-        <div className="absolute w-96 h-96 bg-rarity-rare/10 rounded-full blur-3xl -bottom-48 -right-48 animate-pulse" style={{ animationDelay: '1s' }} />
+    <div className="min-h-screen bg-black text-white overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-pink-500/5 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
       </div>
 
       {/* Navigation */}
-      <nav className="relative z-10 px-6 py-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg bg-xp-gradient flex items-center justify-center shadow-glow-green">
-              <span className="text-white font-bold text-xl">G</span>
+      <nav className="fixed w-full bg-black/80 backdrop-blur-md border-b border-gray-800 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center space-x-2"
+            >
+              <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                <Zap size={18} className="text-white" />
+              </div>
+              <span className="text-2xl font-bold">GoonSync</span>
+            </motion.div>
+            
+            <div className="hidden md:flex items-center space-x-8">
+              <a href="#features" className="text-gray-300 hover:text-white transition">Features</a>
+              <a href="#preview" className="text-gray-300 hover:text-white transition">Preview</a>
+              <a href="#stats" className="text-gray-300 hover:text-white transition">Stats</a>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={onGetStarted}
+                className="px-6 py-2 bg-white text-black rounded-full font-semibold hover:bg-gray-100 transition shadow-lg"
+              >
+                Get Started
+              </motion.button>
             </div>
-            <span className="text-2xl font-bold text-white">GoonSync</span>
+            
+            <button 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)} 
+              className="md:hidden text-white"
+            >
+              {mobileMenuOpen ? <CloseIcon size={24} /> : <Menu size={24} />}
+            </button>
           </div>
-
-          <motion.button
-            onClick={openSignIn}
-            className="px-4 py-2 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl text-white font-medium hover:bg-white/10 transition-all"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            Sign In
-          </motion.button>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <div className="relative z-10 px-6 pt-20 pb-32">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-4xl mx-auto">
-            {/* Badge */}
-            <motion.div 
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-xp-green/10 border border-xp-green/30 mb-6"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <Sparkles size={16} className="text-xp-green" />
-              <span className="text-xp-green font-medium">Level up your social experience</span>
-            </motion.div>
-
-            {/* Headline */}
-            <motion.h1 
-              className="text-6xl md:text-7xl font-bold text-white mb-6 leading-tight"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              Sync Your Life,
-              <br />
-              <span className="text-transparent bg-clip-text bg-xp-gradient">
-                Level Up Together
-              </span>
-            </motion.h1>
-
-            <motion.p 
-              className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
-              Real-time social synchronization meets gamification. Track your progress, unlock achievements, and build circles with friends.
-            </motion.p>
-
-            {/* CTA Buttons */}
-            <motion.div 
-              className="flex items-center justify-center gap-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
-              <motion.button
-                onClick={openSignUp}
-                className="px-8 py-4 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green flex items-center gap-2 text-lg"
-                whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(0,255,136,0.5)' }}
-                whileTap={{ scale: 0.95 }}
+      {/* Mobile Menu */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed inset-0 bg-black z-40 pt-20 px-4"
+          >
+            <div className="flex flex-col space-y-6">
+              <a href="#features" onClick={() => setMobileMenuOpen(false)} className="text-2xl py-2 hover:text-gray-300 transition">Features</a>
+              <a href="#preview" onClick={() => setMobileMenuOpen(false)} className="text-2xl py-2 hover:text-gray-300 transition">Preview</a>
+              <a href="#stats" onClick={() => setMobileMenuOpen(false)} className="text-2xl py-2 hover:text-gray-300 transition">Stats</a>
+              <button 
+                onClick={() => { onGetStarted(); setMobileMenuOpen(false); }} 
+                className="px-8 py-3 bg-white text-black rounded-full font-semibold text-lg"
               >
-                Start For Free
-                <ArrowRight size={20} />
-              </motion.button>
+                Get Started
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
+      {/* Hero Section */}
+      <div className="relative pt-32 pb-20 px-4">
+        <div className="max-w-5xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            <div className="inline-flex items-center space-x-2 px-4 py-2 bg-gray-900 border border-gray-800 rounded-full mb-8">
+              <Sparkles size={16} className="text-yellow-500" />
+              <span className="text-sm text-gray-300">Track your progress with friends</span>
+            </div>
+            
+            <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent leading-tight">
+              Sync with the squad.
+            </h1>
+            
+            <p className="text-lg md:text-xl lg:text-2xl text-gray-400 mb-12 max-w-3xl mx-auto leading-relaxed">
+              Real-time coordination for your crew. Track sessions, compete on leaderboards, earn achievements, and stay synchronized.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <motion.button
-                onClick={() => {
-                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
-                }}
-                className="px-8 py-4 bg-white/5 backdrop-blur-sm border border-white/10 text-white rounded-xl font-medium hover:bg-white/10 transition-all text-lg"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
+                onClick={onGetStarted}
+                className="px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:bg-gray-100 transition shadow-2xl inline-flex items-center"
               >
-                Learn More
+                Start Free <ArrowRight className="ml-2" size={20} />
               </motion.button>
+              
+              <motion.a
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                href="#preview"
+                className="px-8 py-4 border-2 border-gray-700 text-white rounded-full font-bold text-lg hover:border-gray-600 transition inline-flex items-center"
+              >
+                See Preview
+              </motion.a>
+            </div>
+          </motion.div>
+
+          {/* Real-Time Stats */}
+          <motion.div
+            id="stats"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.3 }}
+            className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-4xl mx-auto"
+          >
+            <div className="border border-gray-800 rounded-2xl p-4 md:p-6 bg-gray-900/50 backdrop-blur hover:bg-gray-900/70 transition">
+              <p className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                <AnimatedCounter end={stats.users} suffix="+" />
+              </p>
+              <p className="text-gray-400 text-xs md:text-sm">Active Users</p>
+            </div>
+            <div className="border border-gray-800 rounded-2xl p-4 md:p-6 bg-gray-900/50 backdrop-blur hover:bg-gray-900/70 transition">
+              <p className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                <AnimatedCounter end={stats.sessions} suffix="+" />
+              </p>
+              <p className="text-gray-400 text-xs md:text-sm">Sessions Tracked</p>
+            </div>
+            <div className="border border-gray-800 rounded-2xl p-4 md:p-6 bg-gray-900/50 backdrop-blur hover:bg-gray-900/70 transition">
+              <p className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-yellow-400 to-orange-400 bg-clip-text text-transparent">
+                <AnimatedCounter end={stats.circles} suffix="+" />
+              </p>
+              <p className="text-gray-400 text-xs md:text-sm">Circles Created</p>
+            </div>
+            <div className="border border-gray-800 rounded-2xl p-4 md:p-6 bg-gray-900/50 backdrop-blur hover:bg-gray-900/70 transition">
+              <p className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">
+                <AnimatedCounter end={stats.hours} suffix="+" />
+              </p>
+              <p className="text-gray-400 text-xs md:text-sm">Hours Synced</p>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      {/* App Preview Section - NEW! */}
+      <div id="preview" className="py-20 px-4 border-y border-gray-800 bg-gradient-to-b from-black via-gray-900/20 to-black">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">See GoonSync in Action</h2>
+            <p className="text-gray-400 text-lg">A powerful, intuitive interface designed for teams</p>
+          </motion.div>
+
+          {/* Feature Showcase Grid */}
+          <div className="grid md:grid-cols-2 gap-8 mb-16">
+            {/* Dashboard Preview */}
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="border border-gray-800 rounded-3xl p-8 bg-gradient-to-br from-gray-900 to-black hover:border-gray-700 transition"
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                  <Activity size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Live Dashboard</h3>
+                  <p className="text-sm text-gray-400">Real-time sync status</p>
+                </div>
+              </div>
+              <ul className="space-y-3">
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">See who's active right now</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">One-click start/stop tracking</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Live timer with elapsed time</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">XP bar showing level progress</span>
+                </li>
+              </ul>
             </motion.div>
 
-            {/* Stats */}
-            <motion.div 
-              className="grid grid-cols-3 gap-8 max-w-2xl mx-auto mt-16"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
+            {/* Analytics Preview */}
+            <motion.div
+              initial={{ opacity: 0, x: 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="border border-gray-800 rounded-3xl p-8 bg-gradient-to-br from-gray-900 to-black hover:border-gray-700 transition"
             >
-              <div>
-                <div className="text-3xl font-bold text-xp-green mb-1">50</div>
-                <div className="text-sm text-gray-400">Levels to Master</div>
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-12 w-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                  <BarChart3 size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Advanced Analytics</h3>
+                  <p className="text-sm text-gray-400">Deep insights & trends</p>
+                </div>
               </div>
-              <div>
-                <div className="text-3xl font-bold text-xp-green mb-1">47</div>
-                <div className="text-sm text-gray-400">Achievements</div>
+              <ul className="space-y-3">
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Total sessions & time tracked</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Average duration & longest session</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Streak tracking & consistency</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Detailed session history</span>
+                </li>
+              </ul>
+            </motion.div>
+
+            {/* Leaderboards Preview */}
+            <motion.div
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="border border-gray-800 rounded-3xl p-8 bg-gradient-to-br from-gray-900 to-black hover:border-gray-700 transition"
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-12 w-12 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                  <Trophy size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Circle Leaderboards</h3>
+                  <p className="text-sm text-gray-400">Compete with friends</p>
+                </div>
               </div>
-              <div>
-                <div className="text-3xl font-bold text-xp-green mb-1">∞</div>
-                <div className="text-sm text-gray-400">Circles to Join</div>
+              <ul className="space-y-3">
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Real-time rankings by total time</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">See top performers with medals</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Track your rank in each circle</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Highlighted personal stats</span>
+                </li>
+              </ul>
+            </motion.div>
+
+            {/* Achievements Preview */}
+            <motion.div
+              initial={{ opacity: 0, x: 50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="border border-gray-800 rounded-3xl p-8 bg-gradient-to-br from-gray-900 to-black hover:border-gray-700 transition"
+            >
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="h-12 w-12 bg-gradient-to-br from-pink-500 to-red-500 rounded-xl flex items-center justify-center">
+                  <Star size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">Achievements & XP</h3>
+                  <p className="text-sm text-gray-400">Level up your game</p>
+                </div>
               </div>
+              <ul className="space-y-3">
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">47 unique achievements to unlock</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">50-level progression system</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Earn XP with every session</span>
+                </li>
+                <li className="flex items-start space-x-3">
+                  <CheckCircle size={20} className="text-green-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-300">Unlock notifications & rewards</span>
+                </li>
+              </ul>
             </motion.div>
           </div>
+
+          {/* Cross-Platform */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="border border-gray-800 rounded-3xl p-8 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-center"
+          >
+            <div className="flex justify-center space-x-4 mb-6">
+              <div className="h-16 w-16 bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-700">
+                <Monitor size={32} className="text-blue-400" />
+              </div>
+              <div className="h-16 w-16 bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-700">
+                <Smartphone size={32} className="text-purple-400" />
+              </div>
+            </div>
+            <h3 className="text-2xl font-bold mb-3">Works Everywhere</h3>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              Access GoonSync from any device. Fully responsive design works seamlessly on desktop, tablet, and mobile.
+            </p>
+          </motion.div>
         </div>
       </div>
 
       {/* Features Section */}
-      <div id="features" className="relative z-10 px-6 py-20">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Everything You Need to Level Up
-            </h2>
-            <p className="text-xl text-gray-400">
-              Powerful features designed for social syncing
-            </p>
-          </div>
+      <div id="features" className="py-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">Everything You Need</h2>
+            <p className="text-gray-400 text-lg">Powerful features to keep your squad in sync</p>
+          </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Feature Cards */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[
-              { icon: Zap, title: 'XP System', desc: 'Earn XP for every action. Level up and unlock exclusive rewards.', color: 'xp-green' },
-              { icon: Trophy, title: 'Achievements', desc: '47 unique badges across 4 rarity tiers. Show off your progress.', color: 'rarity-rare' },
-              { icon: Users, title: 'Social Circles', desc: 'Create squads, sync with friends, and build your community.', color: 'rarity-epic' },
-              { icon: Target, title: 'Real-time Sync', desc: 'Live updates across all devices. Stay connected anywhere.', color: 'achievement-gold' },
+              { icon: Users, title: 'Private Circles', desc: 'Create exclusive groups with invite codes. Max 6 members per circle.', color: 'from-blue-500 to-cyan-500' },
+              { icon: Trophy, title: 'Live Leaderboards', desc: 'Compete with your circle in real-time. Track rankings and personal bests.', color: 'from-yellow-500 to-orange-500' },
+              { icon: TrendingUp, title: 'Advanced Analytics', desc: 'Deep insights with session history, trends, and streak tracking.', color: 'from-purple-500 to-pink-500' },
+              { icon: Clock, title: 'Session Tracking', desc: 'Automatic time tracking with start/stop controls and live timers.', color: 'from-green-500 to-emerald-500' },
+              { icon: Award, title: 'Achievements System', desc: 'Unlock 47 achievements across 5 difficulty tiers as you progress.', color: 'from-pink-500 to-red-500' },
+              { icon: Target, title: 'XP & Levels', desc: '50-level progression system. Earn XP every minute and unlock new titles.', color: 'from-indigo-500 to-purple-500' }
             ].map((feature, i) => (
               <motion.div
                 key={i}
-                className="p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl hover:bg-white/10 transition-all"
                 initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * i }}
-                whileHover={{ y: -5 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="border border-gray-800 rounded-2xl p-6 bg-gray-900/30 hover:bg-gray-900/50 hover:border-gray-700 transition group"
               >
-                <div className={`w-12 h-12 rounded-lg bg-${feature.color}/20 border border-${feature.color}/30 flex items-center justify-center mb-4`}>
-                  <feature.icon className={`text-${feature.color}`} size={24} />
+                <div className={`h-12 w-12 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition`}>
+                  <feature.icon size={24} className="text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">{feature.title}</h3>
-                <p className="text-gray-400">{feature.desc}</p>
+                <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
+                <p className="text-gray-400 text-sm leading-relaxed">{feature.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -232,141 +440,43 @@ const EnhancedLanding = () => {
       </div>
 
       {/* CTA Section */}
-      <div className="relative z-10 px-6 py-20">
-        <div className="max-w-4xl mx-auto">
-          <div className="p-12 bg-white/5 backdrop-blur-sm border border-white/10 rounded-3xl text-center">
-            <h2 className="text-4xl font-bold text-white mb-4">
-              Ready to Start Your Journey?
-            </h2>
+      <div className="py-20 px-4 border-t border-gray-800 bg-gradient-to-b from-black to-gray-900">
+        <div className="max-w-4xl mx-auto text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+          >
+            <h2 className="text-4xl md:text-5xl font-bold mb-6">Ready to Get Started?</h2>
             <p className="text-xl text-gray-400 mb-8">
-              Join GoonSync today and level up your social experience.
+              Join <span className="text-white font-bold"><AnimatedCounter end={stats.users} />+</span> users tracking their progress
             </p>
             <motion.button
-              onClick={openSignUp}
-              className="px-8 py-4 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green flex items-center gap-2 text-lg mx-auto"
-              whileHover={{ scale: 1.05, boxShadow: '0 0 30px rgba(0,255,136,0.5)' }}
+              whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              onClick={onGetStarted}
+              className="px-12 py-5 bg-white text-black rounded-full font-bold text-xl hover:bg-gray-100 transition shadow-2xl inline-flex items-center"
             >
-              Get Started Now
-              <ArrowRight size={20} />
+              Start Syncing Free <ArrowRight className="ml-3" size={24} />
             </motion.button>
-          </div>
+          </motion.div>
         </div>
       </div>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-white/10 px-6 py-8">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-xp-gradient flex items-center justify-center">
-              <span className="text-white font-bold">G</span>
+      <div className="border-t border-gray-800 py-8 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center">
+          <div className="flex items-center space-x-2 mb-4 md:mb-0">
+            <div className="h-6 w-6 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+              <Zap size={14} className="text-white" />
             </div>
-            <span className="text-white font-medium">GoonSync</span>
+            <span className="text-lg font-bold">GoonSync</span>
           </div>
-          <p className="text-gray-500 text-sm">
-            © 2024 GoonSync. Level up together.
-          </p>
+          <p className="text-gray-500 text-sm">© 2024 GoonSync. All rights reserved.</p>
         </div>
-      </footer>
-
-      {/* Auth Modal */}
-      {showAuthModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            className="w-full max-w-md p-8 bg-dark-secondary/95 backdrop-blur-glass border border-white/10 rounded-3xl shadow-glass relative"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <button
-              onClick={() => {
-                setShowAuthModal(false);
-                setError('');
-              }}
-              className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors"
-            >
-              <X size={24} />
-            </button>
-
-            <h2 className="text-2xl font-bold text-white mb-6">
-              {authMode === 'signup' ? 'Create Account' : 'Welcome Back'}
-            </h2>
-
-            <form onSubmit={handleAuth} className="space-y-4">
-              {authMode === 'signup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Username
-                  </label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Choose a username"
-                    required
-                    className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-xp-green"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-xp-green"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-xp-green"
-                />
-              </div>
-
-              {error && (
-                <div className="px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-red-500 text-sm">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full px-6 py-3 bg-xp-gradient text-white rounded-xl font-medium shadow-glow-green hover:shadow-[0_0_30px_rgba(0,255,136,0.5)] transition-all disabled:opacity-50"
-              >
-                {isLoading ? 'Loading...' : authMode === 'signup' ? 'Create Account' : 'Sign In'}
-              </button>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => setAuthMode(authMode === 'signup' ? 'signin' : 'signup')}
-                  className="text-sm text-gray-400 hover:text-xp-green transition-colors"
-                >
-                  {authMode === 'signup' 
-                    ? 'Already have an account? Sign in' 
-                    : "Don't have an account? Sign up"}
-                </button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
+      </div>
     </div>
   );
 };
 
-export default EnhancedLanding;
+export { EnhancedLanding, fetchLandingStats };
