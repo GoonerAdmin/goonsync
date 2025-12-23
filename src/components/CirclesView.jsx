@@ -115,7 +115,8 @@ const CirclesView = ({
 
       if (error) throw error;
 
-      onCirclesUpdate();
+      // Trigger reload by closing modal - parent will refresh
+      setShowMembersModal(false);
       setError(`Left "${circleName}"`);
       setTimeout(() => setError(''), 3000);
     } catch (error) {
