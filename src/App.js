@@ -11,8 +11,8 @@ import CirclesView from './components/CirclesView';
 import Settings from './components/Settings';
 import Button from './components/Button';
 
-// CRITICAL: Import API client instead of Supabase
-import { apiClient } from './utils/apiClient';
+// Supabase client
+import { supabase } from './supabaseClient';
 
 // Achievement system imports
 import AchievementNotification, { LevelUpNotification } from './components/AchievementNotification';
@@ -53,8 +53,8 @@ const App = () => {
   // UI state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Achievement system state - CRITICAL: Pass apiClient, not supabase
-  const [achievementChecker] = useState(() => createAchievementChecker(apiClient));
+  // Achievement system state - CRITICAL: Pass supabase, not supabase
+  const [achievementChecker] = useState(() => createAchievementChecker(supabase));
   const [userXP, setUserXP] = useState({ total_xp: 0, current_level: 1 });
   const [newAchievements, setNewAchievements] = useState([]);
   const [showLevelUp, setShowLevelUp] = useState(null);
@@ -67,7 +67,7 @@ const App = () => {
     const initAuth = async () => {
       try {
         // Try to get existing session from API
-        const { data } = await apiClient.auth.getSession();
+        const { data } = await supabase.auth.getSession();
         
         if (data?.session?.user) {
           setUser(data.session.user);
@@ -89,7 +89,7 @@ const App = () => {
   }, []);
 
   // ============================================================================
-  // DATA LOADING FUNCTIONS - All use apiClient
+  // DATA LOADING FUNCTIONS - All use supabase
   // ============================================================================
 
   // Load user profile from database
@@ -99,7 +99,7 @@ const App = () => {
     
     while (attempts < maxAttempts) {
       try {
-        const { data, error } = await apiClient
+        const { data, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', userId)
@@ -130,7 +130,7 @@ const App = () => {
       console.log('Creating new profile for user:', userId);
       const newUsername = `user_${userId.substring(0, 8)}`;
       
-      const { data: newProfile } = await apiClient
+      const { data: newProfile } = await supabase
         .from('profiles')
         .insert([{ 
           id: userId, 
@@ -166,7 +166,7 @@ const App = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await apiClient
+      const { data, error } = await supabase
         .from('circle_members')
         .select('circle_id, circles(id, name, invite_code, created_by, created_at)')
         .eq('user_id', user.id);
@@ -190,7 +190,7 @@ const App = () => {
     if (!user) return;
     
     try {
-      const { data } = await apiClient
+      const { data } = await supabase
         .from('sessions')
         .select('*')
         .eq('user_id', user.id)
@@ -208,7 +208,7 @@ const App = () => {
     
     try {
       const circleIds = circles.map(c => c.id);
-      const { data } = await apiClient
+      const { data } = await supabase
         .from('active_syncs')
         .select('user_id, username, circle_id')
         .in('circle_id', circleIds);
@@ -222,7 +222,7 @@ const App = () => {
   // Load leaderboard for a circle
   const loadLeaderboard = async (circleId) => {
     try {
-      const { data } = await apiClient
+      const { data } = await supabase
         .from('sessions')
         .select('user_id, username, duration_seconds')
         .eq('circle_id', circleId);
@@ -288,7 +288,7 @@ const App = () => {
   // Handle login - called from landing page
   const handleLogin = async (username, password) => {
     try {
-      const { data, error } = await apiClient.auth.signInWithPassword({ 
+      const { data, error } = await supabase.auth.signInWithPassword({ 
         email: `${username}@goonsync.com`, 
         password 
       });
@@ -310,7 +310,7 @@ const App = () => {
   // Handle signup - called from landing page
   const handleSignup = async (username, password) => {
     try {
-      const { data, error } = await apiClient.auth.signUp({ 
+      const { data, error } = await supabase.auth.signUp({ 
         email: `${username}@goonsync.com`, 
         password 
       });
@@ -334,7 +334,7 @@ const App = () => {
   // Handle logout
   const handleLogout = async () => {
     try {
-      await apiClient.auth.signOut();
+      await supabase.auth.signOut();
       setUser(null);
       setProfile(null);
       setView('landing');
@@ -367,7 +367,7 @@ const App = () => {
       const selectedCircle = circles.length > 0 ? circles[0] : null;
       
       // Create session record
-      const { data: sessionData } = await apiClient
+      const { data: sessionData } = await supabase
         .from('sessions')
         .insert([{
           user_id: user.id,
@@ -383,7 +383,7 @@ const App = () => {
       }
 
       // Add to active syncs
-      await apiClient
+      await supabase
         .from('active_syncs')
         .insert([{
           user_id: user.id,
@@ -414,7 +414,7 @@ const App = () => {
       try {
         if (sessionId) {
           // Update session with end time and duration
-          await apiClient
+          await supabase
             .from('sessions')
             .update({ 
               end_time: new Date().toISOString(), 
@@ -427,7 +427,7 @@ const App = () => {
           await achievementChecker.awardXP(user.id, sessionXP);
           
           // Get completed session data
-          const { data: completedSession } = await apiClient
+          const { data: completedSession } = await supabase
             .from('sessions')
             .select('*')
             .eq('id', sessionId)
@@ -464,7 +464,7 @@ const App = () => {
         }
         
         // Remove from active syncs
-        await apiClient
+        await supabase
           .from('active_syncs')
           .delete()
           .eq('user_id', user.id);
@@ -514,7 +514,7 @@ const App = () => {
       const inviteCode = Math.floor(100000 + Math.random() * 900000).toString();
       
       // Create circle
-      const { data: circleData, error: circleError } = await apiClient
+      const { data: circleData, error: circleError } = await supabase
         .from('circles')
         .insert([{ 
           name, 
@@ -527,7 +527,7 @@ const App = () => {
       if (circleError) throw circleError;
 
       // Add creator as member
-      const { error: memberError } = await apiClient
+      const { error: memberError } = await supabase
         .from('circle_members')
         .insert([{ 
           circle_id: circleData.id, 
@@ -568,7 +568,7 @@ const App = () => {
       }
 
       // Find circle by invite code
-      const { data: circle, error: findError } = await apiClient
+      const { data: circle, error: findError } = await supabase
         .from('circles')
         .select('*')
         .eq('invite_code', code.toUpperCase())
@@ -582,7 +582,7 @@ const App = () => {
       }
 
       // Add user as member
-      const { error: joinError } = await apiClient
+      const { error: joinError } = await supabase
         .from('circle_members')
         .insert([{ 
           circle_id: circle.id, 
@@ -699,7 +699,7 @@ const App = () => {
               sessions={sessions}
               activeUsers={activeUsers}
               analytics={analytics}
-              supabase={apiClient}
+              supabase={supabase}
             >
               <div className="p-4">
                 <XPBar 
@@ -807,7 +807,7 @@ const App = () => {
               onJoinCircle={handleJoinCircle}
               leaderboard={leaderboard}
               onLoadLeaderboard={loadLeaderboard}
-              supabase={apiClient}
+              supabase={supabase}
             />
           )}
 
@@ -815,7 +815,7 @@ const App = () => {
           {view === 'achievements' && (
             <AchievementsPage
               user={user}
-              supabase={apiClient}
+              supabase={supabase}
             />
           )}
 
@@ -825,7 +825,7 @@ const App = () => {
               user={user}
               profile={profile}
               onLogout={handleLogout}
-              supabase={apiClient}
+              supabase={supabase}
               onProfileUpdate={() => loadProfile(user.id)}
             />
           )}
