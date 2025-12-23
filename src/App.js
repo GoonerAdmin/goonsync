@@ -20,8 +20,9 @@ import AchievementsPage from './pages/AchievementsPage';
 import XPBar from './components/XPBar';
 import { createAchievementChecker } from './utils/achievementChecker';
 
-// Enhanced landing page import
-import { EnhancedLanding } from './components/EnhancedLanding';
+// Enhanced landing page and auth imports
+import { EnhancedLanding } from './components/LandingPage';
+import AuthModal from './components/AuthModal';
 
 const App = () => {
   // ============================================================================
@@ -33,6 +34,9 @@ const App = () => {
   const [profile, setProfile] = useState(null);
   const [view, setView] = useState('landing');
   const [loading, setLoading] = useState(true);
+  
+  // Auth modal state
+  const [showAuthModal, setShowAuthModal] = useState(false);
   
   // Session state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -651,13 +655,23 @@ const App = () => {
       )}
 
       {/* ========================================================================
+          AUTH MODAL
+          ======================================================================== */}
+      
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onLogin={handleLogin}
+        onSignup={handleSignup}
+      />
+
+      {/* ========================================================================
           LANDING PAGE
           ======================================================================== */}
       
       {view === 'landing' && (
         <EnhancedLanding 
-          onLogin={handleLogin}
-          onSignup={handleSignup}
+          onGetStarted={() => setShowAuthModal(true)}
         />
       )}
 
